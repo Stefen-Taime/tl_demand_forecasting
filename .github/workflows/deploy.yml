@@ -21,5 +21,5 @@ jobs:
     uses: ./.github/workflows/deploy-reusable.yml
     with:
       environment_name: production
-      run_replay_backfill: ${{ inputs.run_replay_backfill }}
+      run_replay_backfill: ${{ github.event_name == 'workflow_dispatch' && inputs.run_replay_backfill || false }}
     secrets: inherit
