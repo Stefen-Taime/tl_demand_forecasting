@@ -30,10 +30,52 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 10,
-        "w": 12,
+        "h": 12,
+        "w": 24,
         "x": 0,
         "y": 0
+      },
+      "id": 2,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "pluginVersion": "11.1.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "PREDICTIONS_DS"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH bounds AS (SELECT MAX(target_hour) AS max_hour FROM zone_predictions) SELECT zp.target_hour AS time, SUM(zp.predicted_trips) AS predicted_trips, SUM(zp.actual_trips) AS actual_trips FROM zone_predictions zp CROSS JOIN bounds b WHERE zp.target_hour BETWEEN b.max_hour - INTERVAL '7 days' AND b.max_hour AND (${zone:sqlstring} = 'All' OR zp.zone_name = ${zone:sqlstring}) GROUP BY zp.target_hour ORDER BY zp.target_hour;",
+          "refId": "A"
+        }
+      ],
+      "title": "Predicted vs Actual",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "PREDICTIONS_DS"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 11,
+        "w": 14,
+        "x": 0,
+        "y": 12
       },
       "id": 1,
       "options": {
@@ -98,52 +140,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 10,
-        "w": 12,
-        "x": 12,
-        "y": 0
-      },
-      "id": 2,
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "single"
-        }
-      },
-      "pluginVersion": "11.1.0",
-      "targets": [
-        {
-          "datasource": {
-            "type": "postgres",
-            "uid": "PREDICTIONS_DS"
-          },
-          "editorMode": "code",
-          "format": "time_series",
-          "rawQuery": true,
-          "rawSql": "WITH bounds AS (SELECT MAX(target_hour) AS max_hour FROM zone_predictions) SELECT zp.target_hour AS time, SUM(zp.predicted_trips) AS predicted_trips, SUM(zp.actual_trips) AS actual_trips FROM zone_predictions zp CROSS JOIN bounds b WHERE zp.target_hour BETWEEN b.max_hour - INTERVAL '7 days' AND b.max_hour AND (${zone:sqlstring} = 'All' OR zp.zone_name = ${zone:sqlstring}) GROUP BY zp.target_hour ORDER BY zp.target_hour;",
-          "refId": "A"
-        }
-      ],
-      "title": "Predicted vs Actual",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "postgres",
-        "uid": "PREDICTIONS_DS"
-      },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 10,
-        "w": 12,
-        "x": 0,
-        "y": 10
+        "h": 8,
+        "w": 10,
+        "x": 14,
+        "y": 12
       },
       "id": 3,
       "pluginVersion": "11.1.0",
@@ -173,10 +173,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 10,
-        "w": 12,
-        "x": 12,
-        "y": 10
+        "h": 3,
+        "w": 10,
+        "x": 14,
+        "y": 20
       },
       "id": 4,
       "options": {
@@ -251,5 +251,5 @@
   "timezone": "",
   "title": "TLC Demand Forecasting",
   "uid": "tlc-demand-forecasting",
-  "version": 3
+  "version": 4
 }
