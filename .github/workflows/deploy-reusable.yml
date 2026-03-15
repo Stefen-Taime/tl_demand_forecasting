@@ -123,11 +123,14 @@ jobs:
 
       - name: Run Ansible site deploy
         env:
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
           MLFLOW_DB_PASSWORD: ${{ secrets.MLFLOW_DB_PASSWORD }}
         run: |
           mkdir -p /tmp/tlc-ansible-local
           ANSIBLE_LOCAL_TEMP=/tmp/tlc-ansible-local \
-          ansible-playbook -i ansible/inventory.ini ansible/playbooks/site.yml -e "mlflow_db_password=${MLFLOW_DB_PASSWORD}"
+          ansible-playbook -i ansible/inventory.ini ansible/playbooks/site.yml \
+            -e "mlflow_db_password=${MLFLOW_DB_PASSWORD}" \
+            -e "grafana_admin_password=${GRAFANA_ADMIN_PASSWORD}"
 
       - name: Verify remote services
         run: |

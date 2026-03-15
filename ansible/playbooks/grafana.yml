@@ -4,6 +4,14 @@
   become: true
 
   tasks:
+    - name: Validate Grafana admin password input
+      ansible.builtin.assert:
+        that:
+          - grafana_admin_password is defined
+          - grafana_admin_password | length >= 16
+        fail_msg: Set grafana_admin_password to a strong secret before deploying Grafana.
+      no_log: true
+
     - name: Ensure Grafana keyring directory exists
       ansible.builtin.file:
         path: /etc/apt/keyrings
@@ -79,6 +87,18 @@
         state: started
         enabled: true
         daemon_reload: true
+
+    - name: Rotate Grafana admin password
+      ansible.builtin.command:
+        argv:
+          - /usr/sbin/grafana-cli
+          - admin
+          - reset-admin-password
+          - --password-from-stdin
+        stdin: "{{ grafana_admin_password }}"
+      register: grafana_admin_reset
+      changed_when: true
+      no_log: true
 
     - name: Wait for Grafana HTTP API
       ansible.builtin.wait_for:

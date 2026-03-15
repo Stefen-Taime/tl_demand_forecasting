@@ -67,8 +67,10 @@ cd ansible
 ../.venv/bin/ansible-galaxy collection install -r collections/requirements.yml
 
 export MLFLOW_DB_PASSWORD='change-me'
+export GRAFANA_ADMIN_PASSWORD='change-me-to-a-long-random-password'
 ../.venv/bin/ansible-playbook -i inventory.ini playbooks/site.yml \
-  -e "mlflow_db_password=$MLFLOW_DB_PASSWORD"
+  -e "mlflow_db_password=$MLFLOW_DB_PASSWORD" \
+  -e "grafana_admin_password=$GRAFANA_ADMIN_PASSWORD"
 cd ..
 ```
 
@@ -138,7 +140,7 @@ Pre-requis GitHub:
 - une variable `AWS_DEPLOY_ROLE_ARN`
 - des variables `AWS_REGION`, `PROJECT_NAME`, `EC2_INSTANCE_TYPE`, `ADMIN_ALLOWED_CIDR`, `EC2_KEY_PAIR_NAME`
 - des variables `TF_STATE_BUCKET`, `TF_STATE_KEY`, `TF_LOCK_TABLE`
-- des secrets `EC2_SSH_PRIVATE_KEY` et `MLFLOW_DB_PASSWORD`
+- des secrets `EC2_SSH_PRIVATE_KEY`, `MLFLOW_DB_PASSWORD` et `GRAFANA_ADMIN_PASSWORD`
 
 Bon usage:
 
@@ -147,6 +149,7 @@ Bon usage:
 - `workflow_dispatch` sur `production` reste disponible en break-glass
 - le role OIDC AWS commun est gere par l'etat Terraform `production`, puis reutilise par `staging`
 - chaque environnement a son `TF_STATE_KEY`, son `PROJECT_NAME` et donc son infra separee
+- `GRAFANA_ADMIN_PASSWORD` doit etre un secret fort et non la valeur par defaut
 
 Contrainte GitHub actuelle:
 

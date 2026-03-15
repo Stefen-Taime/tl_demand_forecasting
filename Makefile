@@ -59,11 +59,12 @@ ansible-collections:
 
 ansible-syntax:
 	mkdir -p /tmp/tlc-ansible-local
-	cd $(ANSIBLE_DIR) && ANSIBLE_LOCAL_TEMP=/tmp/tlc-ansible-local ../$(VENV)/bin/ansible-playbook -i inventory.ini playbooks/site.yml --syntax-check -e "mlflow_db_password=dummy"
+	cd $(ANSIBLE_DIR) && ANSIBLE_LOCAL_TEMP=/tmp/tlc-ansible-local ../$(VENV)/bin/ansible-playbook -i inventory.ini playbooks/site.yml --syntax-check -e "mlflow_db_password=dummy" -e "grafana_admin_password=dummy-password-for-syntax"
 
 ansible-apply:
 	: $${MLFLOW_DB_PASSWORD:?Set MLFLOW_DB_PASSWORD}
-	cd $(ANSIBLE_DIR) && ../$(VENV)/bin/ansible-playbook -i inventory.ini playbooks/site.yml -e "mlflow_db_password=$$MLFLOW_DB_PASSWORD"
+	: $${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD}
+	cd $(ANSIBLE_DIR) && ../$(VENV)/bin/ansible-playbook -i inventory.ini playbooks/site.yml -e "mlflow_db_password=$$MLFLOW_DB_PASSWORD" -e "grafana_admin_password=$$GRAFANA_ADMIN_PASSWORD"
 
 centroids:
 	: $${S3_BUCKET:?Set S3_BUCKET}

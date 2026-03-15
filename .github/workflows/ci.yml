@@ -84,4 +84,4 @@ jobs:
       - name: Syntax check playbooks
         run: |
           mkdir -p /tmp/tlc-ansible-local
-          ANSIBLE_LOCAL_TEMP=/tmp/tlc-ansible-local ansible-playbook -i ansible/inventory.ini ansible/playbooks/site.yml --syntax-check -e "mlflow_db_password=dummy"
+          ANSIBLE_LOCAL_TEMP=/tmp/tlc-ansible-local ansible-playbook -i ansible/inventory.ini ansible/playbooks/site.yml --syntax-check -e "mlflow_db_password=dummy" -e "grafana_admin_password=dummy-password-for-syntax"

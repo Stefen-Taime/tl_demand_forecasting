@@ -87,8 +87,10 @@ Configurer le serveur:
 
 ```bash
 export MLFLOW_DB_PASSWORD='change-me-now'
+export GRAFANA_ADMIN_PASSWORD='change-me-to-a-long-random-password'
 ../.venv/bin/ansible-playbook -i inventory.ini playbooks/site.yml \
-  -e "mlflow_db_password=$MLFLOW_DB_PASSWORD"
+  -e "mlflow_db_password=$MLFLOW_DB_PASSWORD" \
+  -e "grafana_admin_password=$GRAFANA_ADMIN_PASSWORD"
 cd ..
 ```
 
@@ -280,6 +282,7 @@ Secrets GitHub Environment a definir pour `staging` et `production`:
 
 - `EC2_SSH_PRIVATE_KEY`
 - `MLFLOW_DB_PASSWORD`
+- `GRAFANA_ADMIN_PASSWORD`
 
 Recommandation:
 
@@ -289,6 +292,7 @@ Recommandation:
 - l'etat Terraform `production` gere le role OIDC GitHub -> AWS commun, `staging` le reutilise
 - `TF_STATE_KEY` doit etre distinct par environnement, par exemple `terraform/state/staging.tfstate` et `terraform/state/production.tfstate`
 - `PROJECT_NAME` doit aussi etre distinct, par exemple `tlc-mlops-staging` et `tlc-mlops`
+- `GRAFANA_ADMIN_PASSWORD` doit etre renseigne avant le premier deploy pour eviter de laisser Grafana sur le mot de passe par defaut
 
 Le workflow utilise `OIDC` pour AWS, puis ouvre une regle SSH temporaire uniquement pour l'IP du runner GitHub pendant le deploiement.
 
