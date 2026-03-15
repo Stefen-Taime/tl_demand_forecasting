@@ -17,7 +17,7 @@ Le runbook d'execution est dans [`DEPLOYMENT.md`](/Users/stefen/tl_demand_foreca
 
 Exemple de rendu du dashboard metier Grafana sur une zone selectionnee:
 
-![Apercu du dashboard TLC Demand Forecasting](img.png)
+![Apercu du dashboard TLC Demand Forecasting](img/img.png)
 
 ## 1. Ce que le projet cherche a demontrer
 
@@ -32,6 +32,10 @@ Ici, la reponse est oui, avec trois contraintes importantes:
 - la promotion modele n'est pas basee sur "le score le plus joli", mais sur des baselines, un holdout gele et des quality gates
 
 ## 2. Architecture d'ensemble
+
+Vue d'ensemble de l'architecture effectivement deployee:
+
+![Architecture overview du projet](img/img2.png)
 
 ### Vue simple
 
