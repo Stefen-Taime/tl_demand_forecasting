@@ -7,6 +7,7 @@ VENV := .venv
 PIP := $(VENV)/bin/pip
 PY := $(VENV)/bin/python
 TFVARS := terraform.tfvars
+TF_BACKEND_CONFIG := backend.hcl
 YEAR ?= 2024
 MONTHS ?= 1 2 3
 TAXI_TYPE ?= yellow
@@ -30,7 +31,7 @@ quality-gates:
 	$(PY) scripts/check_quality.py
 
 tf-init:
-	terraform -chdir=$(TF_DIR) init
+	if [ -f $(TF_DIR)/$(TF_BACKEND_CONFIG) ]; then terraform -chdir=$(TF_DIR) init -backend-config=$(TF_BACKEND_CONFIG); else terraform -chdir=$(TF_DIR) init; fi
 
 tf-plan:
 	terraform -chdir=$(TF_DIR) plan -var-file=$(TFVARS)

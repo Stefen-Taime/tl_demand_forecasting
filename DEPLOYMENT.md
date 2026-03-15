@@ -26,6 +26,7 @@ Copier le fichier d'exemple:
 
 ```bash
 cp terraform/terraform.tfvars.example terraform/terraform.tfvars
+cp terraform/backend.hcl.example terraform/backend.hcl
 ```
 
 Puis remplir dans `terraform/terraform.tfvars`:
@@ -43,6 +44,7 @@ Puis remplir dans `terraform/terraform.tfvars`:
 
 ```bash
 terraform -chdir=terraform init
+terraform -chdir=terraform init -backend-config=backend.hcl
 terraform -chdir=terraform plan -var-file=terraform.tfvars
 terraform -chdir=terraform apply -var-file=terraform.tfvars
 ```
@@ -267,6 +269,9 @@ Variables GitHub Environment `production` a definir:
 - `EC2_INSTANCE_TYPE`
 - `ADMIN_ALLOWED_CIDR`
 - `EC2_KEY_PAIR_NAME`
+- `TF_STATE_BUCKET`
+- `TF_STATE_KEY`
+- `TF_LOCK_TABLE`
 
 Secrets GitHub Environment `production` a definir:
 

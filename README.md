@@ -48,9 +48,12 @@ Copier [`terraform/terraform.tfvars.example`](/Users/stefen/tl_demand_forecastin
 
 ```bash
 cd terraform
-terraform init
+cp backend.hcl.example backend.hcl
+terraform init -backend-config=backend.hcl
 terraform apply -var-file=terraform.tfvars
 ```
+
+Le backend Terraform recommande est `S3 + DynamoDB lock`, pas un `tfstate` local.
 
 ### 4. Configurer l'EC2
 
@@ -127,6 +130,7 @@ Pre-requis GitHub:
 - un environnement GitHub `production`
 - une variable `AWS_DEPLOY_ROLE_ARN`
 - des variables `AWS_REGION`, `PROJECT_NAME`, `EC2_INSTANCE_TYPE`, `ADMIN_ALLOWED_CIDR`, `EC2_KEY_PAIR_NAME`
+- des variables `TF_STATE_BUCKET`, `TF_STATE_KEY`, `TF_LOCK_TABLE`
 - des secrets `EC2_SSH_PRIVATE_KEY` et `MLFLOW_DB_PASSWORD`
 
 Le workflow:

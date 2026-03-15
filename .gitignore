@@ -8,6 +8,7 @@ __pycache__/
 .terraform/
 terraform/.terraform/
 terraform/terraform.tfvars
+terraform/backend.hcl
 terraform/tfplan
 terraform/*.tfstate
 terraform/*.tfstate.*

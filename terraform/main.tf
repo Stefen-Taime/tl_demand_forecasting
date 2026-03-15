@@ -167,8 +167,11 @@ resource "aws_iam_role_policy" "github_actions_deployer" {
         Effect = "Allow"
         Action = [
           "s3:CreateBucket",
+          "s3:DeleteBucketPolicy",
           "s3:DeleteBucket",
           "s3:DeleteObject",
+          "s3:GetBucketPublicAccessBlock",
+          "s3:GetBucketTagging",
           "s3:GetBucketLocation",
           "s3:GetBucketVersioning",
           "s3:GetEncryptionConfiguration",
@@ -176,6 +179,7 @@ resource "aws_iam_role_policy" "github_actions_deployer" {
           "s3:ListAllMyBuckets",
           "s3:ListBucket",
           "s3:PutBucketPublicAccessBlock",
+          "s3:PutBucketTagging",
           "s3:PutBucketVersioning",
           "s3:PutEncryptionConfiguration",
           "s3:PutObject"
@@ -196,15 +200,28 @@ resource "aws_iam_role_policy" "github_actions_deployer" {
           "iam:GetInstanceProfile",
           "iam:GetOpenIDConnectProvider",
           "iam:GetRole",
+          "iam:GetRolePolicy",
           "iam:ListInstanceProfilesForRole",
           "iam:ListOpenIDConnectProviders",
+          "iam:ListRolePolicies",
           "iam:PassRole",
           "iam:PutRolePolicy",
           "iam:RemoveRoleFromInstanceProfile",
           "iam:TagOpenIDConnectProvider",
           "iam:TagRole",
           "iam:UntagOpenIDConnectProvider",
-          "iam:UntagRole"
+          "iam:UntagRole",
+          "iam:UpdateAssumeRolePolicy"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:DeleteItem",
+          "dynamodb:DescribeTable",
+          "dynamodb:GetItem",
+          "dynamodb:PutItem"
         ]
         Resource = "*"
       },
