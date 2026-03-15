@@ -33,7 +33,7 @@ jobs:
       TF_VAR_instance_type: ${{ vars.EC2_INSTANCE_TYPE }}
       TF_VAR_allowed_cidr: ${{ vars.ADMIN_ALLOWED_CIDR }}
       TF_VAR_key_pair_name: ${{ vars.EC2_KEY_PAIR_NAME }}
-      TF_VAR_enable_github_actions_oidc: "true"
+      TF_VAR_enable_github_actions_oidc: ${{ inputs.environment_name == 'production' && 'true' || 'false' }}
       TF_VAR_github_repository: ${{ github.repository }}
       TF_VAR_github_environments: '["staging","production"]'
 
@@ -129,7 +129,9 @@ jobs:
       - name: Revoke temporary SSH ingress
         if: ${{ always() }}
         run: |
-          aws ec2 revoke-security-group-ingress \
-            --group-id "${{ steps.tf.outputs.security_group_id }}" \
-            --ip-permissions "[{\"IpProtocol\":\"tcp\",\"FromPort\":22,\"ToPort\":22,\"IpRanges\":[{\"CidrIp\":\"${{ steps.runner_ip.outputs.cidr }}\"}]}]" \
-            || true
+          if [ -n "${{ steps.tf.outputs.security_group_id }}" ]; then
+            aws ec2 revoke-security-group-ingress \
+              --group-id "${{ steps.tf.outputs.security_group_id }}" \
+              --ip-permissions "[{\"IpProtocol\":\"tcp\",\"FromPort\":22,\"ToPort\":22,\"IpRanges\":[{\"CidrIp\":\"${{ steps.runner_ip.outputs.cidr }}\"}]}]" \
+              || true
+          fi

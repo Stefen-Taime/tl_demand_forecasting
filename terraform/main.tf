@@ -154,6 +154,7 @@ resource "aws_iam_role_policy" "github_actions_deployer" {
         Action = [
           "ec2:AllocateAddress",
           "ec2:AssociateAddress",
+          "ec2:AuthorizeSecurityGroupEgress",
           "ec2:AuthorizeSecurityGroupIngress",
           "ec2:CreateSecurityGroup",
           "ec2:CreateTags",
@@ -163,6 +164,7 @@ resource "aws_iam_role_policy" "github_actions_deployer" {
           "ec2:DisassociateAddress",
           "ec2:ModifyInstanceAttribute",
           "ec2:ReleaseAddress",
+          "ec2:RevokeSecurityGroupEgress",
           "ec2:RevokeSecurityGroupIngress",
           "ec2:RunInstances",
           "ec2:StartInstances",

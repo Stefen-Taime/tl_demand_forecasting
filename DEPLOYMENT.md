@@ -285,6 +285,7 @@ Recommandation:
 
 - `staging` deploye automatiquement sur `push` vers `main`
 - `production` reste un `workflow_dispatch` manuel
+- l'etat Terraform `production` gere le role OIDC GitHub -> AWS commun, `staging` le reutilise
 - `TF_STATE_KEY` doit etre distinct par environnement, par exemple `terraform/state/staging.tfstate` et `terraform/state/production.tfstate`
 - `PROJECT_NAME` doit aussi etre distinct, par exemple `tlc-mlops-staging` et `tlc-mlops`
 

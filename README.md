@@ -144,6 +144,7 @@ Bon usage:
 
 - `staging` sert de cible d'integration et peut etre plus petit ou moins couteux
 - `production` reste manuel et peut etre protege par reviewers GitHub Environment
+- le role OIDC AWS commun est gere par l'etat Terraform `production`, puis reutilise par `staging`
 - chaque environnement a son `TF_STATE_KEY`, son `PROJECT_NAME` et donc son infra separee
 
 ### 8. Verifier Grafana et le replay timer
