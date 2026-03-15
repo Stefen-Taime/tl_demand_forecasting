@@ -93,6 +93,7 @@ jobs:
         id: tf
         run: |
           echo "server_ip=$(terraform -chdir=terraform output -raw server_ip)" >> "$GITHUB_OUTPUT"
+          echo "s3_bucket=$(terraform -chdir=terraform output -raw s3_bucket)" >> "$GITHUB_OUTPUT"
           echo "security_group_id=$(terraform -chdir=terraform output -raw security_group_id)" >> "$GITHUB_OUTPUT"
 
       - name: Authorize temporary SSH ingress for this runner
@@ -108,6 +109,14 @@ jobs:
           printf '%s\n' "${{ secrets.EC2_SSH_PRIVATE_KEY }}" | tr -d '\r' > ~/.ssh/github-actions
           chmod 600 ~/.ssh/github-actions
           ssh-keygen -y -f ~/.ssh/github-actions >/dev/null
+
+      - name: Render Ansible inventory
+        run: |
+          printf '[mlops_server]\n%s ansible_user=ubuntu ansible_ssh_private_key_file=%s\n\n[mlops_server:vars]\nansible_ssh_common_args='\''-o StrictHostKeyChecking=no'\''\ns3_bucket=%s\naws_region=%s\n' \
+            "${{ steps.tf.outputs.server_ip }}" \
+            "~/.ssh/github-actions" \
+            "${{ steps.tf.outputs.s3_bucket }}" \
+            "${{ vars.AWS_REGION }}" > ansible/inventory.ini
 
       - name: Run Ansible site deploy
         env:
