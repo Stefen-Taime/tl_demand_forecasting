@@ -13,6 +13,12 @@ Le projet est pense comme un systeme complet, pas comme un simple notebook:
 
 Le runbook d'execution est dans [`DEPLOYMENT.md`](/Users/stefen/tl_demand_forecasting/DEPLOYMENT.md). Ce `README` sert surtout a comprendre le systeme, son architecture, ses choix et le parcours de la donnee.
 
+## Apercu
+
+Exemple de rendu du dashboard metier Grafana sur une zone selectionnee:
+
+![Apercu du dashboard TLC Demand Forecasting](img.png)
+
 ## 1. Ce que le projet cherche a demontrer
 
 Le projet repond a une question simple:
