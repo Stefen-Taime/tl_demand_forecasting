@@ -27,8 +27,10 @@ variable "key_pair_name" {
 }
 
 variable "ssh_private_key_path" {
-  description = "Chemin local vers la cle privee utilisee par Ansible"
+  description = "Chemin local vers la cle privee utilisee par Ansible. Deprecated: ne plus utiliser dans le tfstate partage."
   type        = string
+  default     = null
+  nullable    = true
 }
 
 variable "enable_github_actions_oidc" {
@@ -44,7 +46,14 @@ variable "github_repository" {
 }
 
 variable "github_environment" {
-  description = "Nom de l'environnement GitHub protege pour le deploiement"
+  description = "Environnement GitHub unique autorise a assumer le role OIDC. Deprecated au profit de github_environments."
   type        = string
-  default     = "production"
+  default     = null
+  nullable    = true
+}
+
+variable "github_environments" {
+  description = "Environnements GitHub proteges autorises a assumer le role OIDC"
+  type        = set(string)
+  default     = []
 }

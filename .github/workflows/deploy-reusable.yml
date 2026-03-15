@@ -1,0 +1,135 @@
+name: Deploy Environment Reusable
+
+on:
+  workflow_call:
+    inputs:
+      environment_name:
+        description: "GitHub environment to deploy"
+        required: true
+        type: string
+      run_replay_backfill:
+        description: "Run a full replay backfill after deploy"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: ${{ inputs.environment_name }}-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment_name }}
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      TF_IN_AUTOMATION: "true"
+      TF_VAR_aws_region: ${{ vars.AWS_REGION }}
+      TF_VAR_project_name: ${{ vars.PROJECT_NAME }}
+      TF_VAR_instance_type: ${{ vars.EC2_INSTANCE_TYPE }}
+      TF_VAR_allowed_cidr: ${{ vars.ADMIN_ALLOWED_CIDR }}
+      TF_VAR_key_pair_name: ${{ vars.EC2_KEY_PAIR_NAME }}
+      TF_VAR_enable_github_actions_oidc: "true"
+      TF_VAR_github_repository: ${{ github.repository }}
+      TF_VAR_github_environments: '["staging","production"]'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: ansible/collections/requirements.yml
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          mask-aws-account-id: true
+
+      - name: Install deploy dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ansible-core
+
+      - name: Install Ansible collections
+        run: ansible-galaxy collection install -r ansible/collections/requirements.yml
+
+      - name: Resolve runner public IP
+        id: runner_ip
+        run: |
+          RUNNER_IP="$(curl -s https://checkip.amazonaws.com | tr -d '\n')/32"
+          echo "cidr=${RUNNER_IP}" >> "$GITHUB_OUTPUT"
+
+      - name: Terraform init
+        run: |
+          terraform -chdir=terraform init \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="key=${{ vars.TF_STATE_KEY }}" \
+            -backend-config="region=${{ vars.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ vars.TF_LOCK_TABLE }}" \
+            -backend-config="encrypt=true"
+
+      - name: Terraform plan
+        run: terraform -chdir=terraform plan -out=tfplan
+
+      - name: Terraform apply
+        run: terraform -chdir=terraform apply -auto-approve tfplan
+
+      - name: Capture infrastructure outputs
+        id: tf
+        run: |
+          echo "server_ip=$(terraform -chdir=terraform output -raw server_ip)" >> "$GITHUB_OUTPUT"
+          echo "security_group_id=$(terraform -chdir=terraform output -raw security_group_id)" >> "$GITHUB_OUTPUT"
+
+      - name: Authorize temporary SSH ingress for this runner
+        run: |
+          aws ec2 authorize-security-group-ingress \
+            --group-id "${{ steps.tf.outputs.security_group_id }}" \
+            --ip-permissions "[{\"IpProtocol\":\"tcp\",\"FromPort\":22,\"ToPort\":22,\"IpRanges\":[{\"CidrIp\":\"${{ steps.runner_ip.outputs.cidr }}\",\"Description\":\"github-actions-temporary-ssh\"}]}]" \
+            || true
+
+      - name: Write SSH private key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.EC2_SSH_PRIVATE_KEY }}" | tr -d '\r' > ~/.ssh/github-actions
+          chmod 600 ~/.ssh/github-actions
+          ssh-keygen -y -f ~/.ssh/github-actions >/dev/null
+
+      - name: Run Ansible site deploy
+        env:
+          MLFLOW_DB_PASSWORD: ${{ secrets.MLFLOW_DB_PASSWORD }}
+        run: |
+          mkdir -p /tmp/tlc-ansible-local
+          ANSIBLE_LOCAL_TEMP=/tmp/tlc-ansible-local \
+          ansible-playbook -i ansible/inventory.ini ansible/playbooks/site.yml -e "mlflow_db_password=${MLFLOW_DB_PASSWORD}"
+
+      - name: Verify remote services
+        run: |
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/github-actions ubuntu@${{ steps.tf.outputs.server_ip }} 'sudo systemctl is-active postgresql mlflow grafana-server tlc-replay.timer'
+
+      - name: Optional replay backfill
+        if: ${{ inputs.run_replay_backfill }}
+        run: |
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/github-actions ubuntu@${{ steps.tf.outputs.server_ip }} "sudo bash -lc 'set -a && . /etc/tlc-mlops/replay.env && set +a && cd /opt/tlc-mlops/prediction_service && exec sudo -E -u ubuntu /opt/tlc-mlops/.venv/bin/python /opt/tlc-mlops/prediction_service/run_replay_cycle.py --until-wrap --prune-window'"
+
+      - name: Revoke temporary SSH ingress
+        if: ${{ always() }}
+        run: |
+          aws ec2 revoke-security-group-ingress \
+            --group-id "${{ steps.tf.outputs.security_group_id }}" \
+            --ip-permissions "[{\"IpProtocol\":\"tcp\",\"FromPort\":22,\"ToPort\":22,\"IpRanges\":[{\"CidrIp\":\"${{ steps.runner_ip.outputs.cidr }}\"}]}]" \
+            || true

@@ -35,10 +35,9 @@ Puis remplir dans `terraform/terraform.tfvars`:
 - `instance_type = "m6i.large"` recommande pour eviter les limites CPU burst des `t3.small`
 - `allowed_cidr`
 - `key_pair_name`
-- `ssh_private_key_path`
 - `enable_github_actions_oidc = true` si tu veux le CD GitHub
 - `github_repository = "owner/repo"`
-- `github_environment = "production"`
+- `github_environments = ["staging", "production"]`
 
 ## 3. Provisionner AWS
 
@@ -64,6 +63,8 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements/local.txt
+export SSH_PRIVATE_KEY_PATH=~/.ssh/my-aws-key.pem
+make inventory
 ```
 
 Verifier que `ansible-playbook` est maintenant disponible:
@@ -128,10 +129,8 @@ Fichiers attendus:
 Dans un **autre terminal**, lancer:
 
 ```bash
-terraform -chdir=terraform output -raw ssh_mlflow_tunnel
+ssh -i "$SSH_PRIVATE_KEY_PATH" -N -L 5000:127.0.0.1:5000 ubuntu@$(terraform -chdir=terraform output -raw server_ip)
 ```
-
-Puis executer la commande affichee.  
 Quand le tunnel tourne, dans ton terminal principal:
 
 ```bash
@@ -259,9 +258,13 @@ terraform -chdir=terraform destroy -var-file=terraform.tfvars
 
 ## 16. GitHub CD via OIDC
 
-Le workflow de deploiement est [`.github/workflows/deploy.yml`](/Users/stefen/tl_demand_forecasting/.github/workflows/deploy.yml).
+Les workflows de deploiement sont:
 
-Variables GitHub Environment `production` a definir:
+- [`.github/workflows/deploy-staging.yml`](/Users/stefen/tl_demand_forecasting/.github/workflows/deploy-staging.yml) pour `staging`
+- [`.github/workflows/deploy.yml`](/Users/stefen/tl_demand_forecasting/.github/workflows/deploy.yml) pour `production`
+- [`.github/workflows/deploy-reusable.yml`](/Users/stefen/tl_demand_forecasting/.github/workflows/deploy-reusable.yml) pour la logique commune
+
+Variables GitHub Environment a definir pour `staging` et `production`:
 
 - `AWS_DEPLOY_ROLE_ARN`
 - `AWS_REGION`
@@ -273,9 +276,16 @@ Variables GitHub Environment `production` a definir:
 - `TF_STATE_KEY`
 - `TF_LOCK_TABLE`
 
-Secrets GitHub Environment `production` a definir:
+Secrets GitHub Environment a definir pour `staging` et `production`:
 
 - `EC2_SSH_PRIVATE_KEY`
 - `MLFLOW_DB_PASSWORD`
+
+Recommandation:
+
+- `staging` deploye automatiquement sur `push` vers `main`
+- `production` reste un `workflow_dispatch` manuel
+- `TF_STATE_KEY` doit etre distinct par environnement, par exemple `terraform/state/staging.tfstate` et `terraform/state/production.tfstate`
+- `PROJECT_NAME` doit aussi etre distinct, par exemple `tlc-mlops-staging` et `tlc-mlops`
 
 Le workflow utilise `OIDC` pour AWS, puis ouvre une regle SSH temporaire uniquement pour l'IP du runner GitHub pendant le deploiement.

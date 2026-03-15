@@ -1,0 +1,27 @@
+name: Deploy Staging
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/**"
+      - "ansible/**"
+      - "prediction_service/**"
+      - "requirements/**"
+      - "scripts/**"
+      - "terraform/**"
+      - "Makefile"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy-staging:
+    uses: ./.github/workflows/deploy-reusable.yml
+    with:
+      environment_name: staging
+      run_replay_backfill: false
+    secrets: inherit

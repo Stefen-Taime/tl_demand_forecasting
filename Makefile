@@ -12,7 +12,7 @@ YEAR ?= 2024
 MONTHS ?= 1 2 3
 TAXI_TYPE ?= yellow
 
-.PHONY: venv install-local py-check test quality-gates tf-init tf-plan tf-apply tf-output tf-validate ansible-collections ansible-syntax ansible-apply centroids ingest features train evaluate promote grafana-health replay-now replay-backfill destroy
+.PHONY: venv install-local py-check test quality-gates tf-init tf-plan tf-apply tf-output tf-validate inventory ansible-collections ansible-syntax ansible-apply centroids ingest features train evaluate promote grafana-health replay-now replay-backfill destroy
 
 venv:
 	$(PYTHON) -m venv $(VENV)
@@ -46,6 +46,13 @@ tf-validate:
 	terraform -chdir=$(TF_DIR) fmt -check
 	terraform -chdir=$(TF_DIR) init -backend=false -upgrade
 	terraform -chdir=$(TF_DIR) validate
+
+inventory:
+	: $${SSH_PRIVATE_KEY_PATH:?Set SSH_PRIVATE_KEY_PATH}
+	SERVER_IP=$$(terraform -chdir=$(TF_DIR) output -raw server_ip); \
+	S3_BUCKET=$$(terraform -chdir=$(TF_DIR) output -raw s3_bucket); \
+	AWS_REGION=$$(terraform -chdir=$(TF_DIR) output -raw aws_region); \
+	printf '[mlops_server]\n%s ansible_user=ubuntu ansible_ssh_private_key_file=%s\n\n[mlops_server:vars]\nansible_ssh_common_args='\''-o StrictHostKeyChecking=no'\''\ns3_bucket=%s\naws_region=%s\n' "$$SERVER_IP" "$$SSH_PRIVATE_KEY_PATH" "$$S3_BUCKET" "$$AWS_REGION" > $(ANSIBLE_DIR)/inventory.ini
 
 ansible-collections:
 	cd $(ANSIBLE_DIR) && ../$(VENV)/bin/ansible-galaxy collection install -r collections/requirements.yml

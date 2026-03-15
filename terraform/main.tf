@@ -35,8 +35,14 @@ resource "random_id" "bucket_suffix" {
 }
 
 locals {
-  github_actions_oidc_enabled = var.enable_github_actions_oidc && trimspace(var.github_repository) != ""
-  github_actions_subject      = "repo:${var.github_repository}:environment:${var.github_environment}"
+  github_actions_environments = length(var.github_environments) > 0 ? sort(tolist(var.github_environments)) : (
+    var.github_environment != null && trimspace(var.github_environment) != "" ? [trimspace(var.github_environment)] : []
+  )
+  github_actions_oidc_enabled = var.enable_github_actions_oidc && trimspace(var.github_repository) != "" && length(local.github_actions_environments) > 0
+  github_actions_subjects = [
+    for environment_name in local.github_actions_environments :
+    "repo:${var.github_repository}:environment:${environment_name}"
+  ]
 }
 
 resource "aws_s3_bucket" "mlops" {
@@ -125,7 +131,9 @@ resource "aws_iam_role" "github_actions_deployer" {
       Condition = {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-          "token.actions.githubusercontent.com:sub" = local.github_actions_subject
+        }
+        "ForAnyValue:StringEquals" = {
+          "token.actions.githubusercontent.com:sub" = local.github_actions_subjects
         }
       }
     }]
@@ -328,14 +336,4 @@ resource "aws_eip" "mlops_server" {
   tags = {
     Project = var.project_name
   }
-}
-
-resource "local_file" "ansible_inventory" {
-  content = templatefile("${path.module}/inventory.tftpl", {
-    server_ip            = aws_eip.mlops_server.public_ip
-    ssh_private_key_path = var.ssh_private_key_path
-    s3_bucket            = aws_s3_bucket.mlops.id
-    aws_region           = var.aws_region
-  })
-  filename = "${path.module}/../ansible/inventory.ini"
 }

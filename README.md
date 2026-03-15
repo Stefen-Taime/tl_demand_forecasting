@@ -42,7 +42,6 @@ Copier [`terraform/terraform.tfvars.example`](/Users/stefen/tl_demand_forecastin
 - `instance_type = "m6i.large"` recommande pour faire tourner `MLflow + PostgreSQL + Grafana + replay` sur une seule EC2
 - `allowed_cidr`
 - `key_pair_name`
-- `ssh_private_key_path`
 
 ### 3. Provisionner AWS
 
@@ -61,6 +60,8 @@ Le backend Terraform recommande est `S3 + DynamoDB lock`, pas un `tfstate` local
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements/local.txt
+export SSH_PRIVATE_KEY_PATH=~/.ssh/my-aws-key.pem
+make inventory
 
 cd ansible
 ../.venv/bin/ansible-galaxy collection install -r collections/requirements.yml
@@ -84,7 +85,7 @@ python scripts/build_features.py
 ### 6. Ouvrir un tunnel MLflow
 
 ```bash
-ssh -N -L 5000:127.0.0.1:5000 ubuntu@EC2_IP
+ssh -i "$SSH_PRIVATE_KEY_PATH" -N -L 5000:127.0.0.1:5000 ubuntu@EC2_IP
 export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
 ```
 
@@ -123,23 +124,27 @@ La meme logique est versionnee dans [`.github/workflows/ci.yml`](/Users/stefen/t
 
 ## GitHub CD
 
-Le deploiement production est pilote par OIDC GitHub -> AWS dans [`.github/workflows/deploy.yml`](/Users/stefen/tl_demand_forecasting/.github/workflows/deploy.yml).
+Le CD GitHub est separe entre:
+
+- [`.github/workflows/deploy-staging.yml`](/Users/stefen/tl_demand_forecasting/.github/workflows/deploy-staging.yml): deploiement `staging` automatique sur `push` vers `main`
+- [`.github/workflows/deploy.yml`](/Users/stefen/tl_demand_forecasting/.github/workflows/deploy.yml): deploiement `production` manuel
+- [`.github/workflows/deploy-reusable.yml`](/Users/stefen/tl_demand_forecasting/.github/workflows/deploy-reusable.yml): logique commune de deploiement
+
+Le tout est pilote par OIDC GitHub -> AWS, sans credentials AWS longs dans GitHub.
 
 Pre-requis GitHub:
 
-- un environnement GitHub `production`
+- des environnements GitHub `staging` et `production`
 - une variable `AWS_DEPLOY_ROLE_ARN`
 - des variables `AWS_REGION`, `PROJECT_NAME`, `EC2_INSTANCE_TYPE`, `ADMIN_ALLOWED_CIDR`, `EC2_KEY_PAIR_NAME`
 - des variables `TF_STATE_BUCKET`, `TF_STATE_KEY`, `TF_LOCK_TABLE`
 - des secrets `EC2_SSH_PRIVATE_KEY` et `MLFLOW_DB_PASSWORD`
 
-Le workflow:
+Bon usage:
 
-- assume un role AWS court-terme via OIDC
-- fait `terraform init/plan/apply`
-- ouvre temporairement SSH pour l'IP du runner GitHub
-- rejoue `ansible/playbooks/site.yml`
-- referme la regle SSH temporaire en fin de job
+- `staging` sert de cible d'integration et peut etre plus petit ou moins couteux
+- `production` reste manuel et peut etre protege par reviewers GitHub Environment
+- chaque environnement a son `TF_STATE_KEY`, son `PROJECT_NAME` et donc son infra separee
 
 ### 8. Verifier Grafana et le replay timer
 

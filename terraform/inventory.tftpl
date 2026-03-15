@@ -1,7 +1,0 @@
-[mlops_server]
-${server_ip} ansible_user=ubuntu ansible_ssh_private_key_file=${ssh_private_key_path}
-
-[mlops_server:vars]
-ansible_ssh_common_args='-o StrictHostKeyChecking=no'
-s3_bucket=${s3_bucket}
-aws_region=${aws_region}
