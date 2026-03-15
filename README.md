@@ -172,6 +172,26 @@ Pourquoi cette phase existe:
 - preparer un holdout final qui ne sera pas utilise pour l'entrainement
 - produire exactement les memes colonnes pour training et replay
 
+### Fenetre de donnees actuellement utilisee
+
+Au moment actuel du projet, les fichiers ingeres couvrent `3 mois` de `yellow taxi`:
+
+- `janvier 2024`
+- `fevrier 2024`
+- `mars 2024`
+
+Le dataset construit couvre:
+
+- `features` complets: du `1 janvier 2024 00:00:00` au `31 mars 2024 23:00:00`
+- `train`: du `1 janvier 2024 00:00:00` au `24 mars 2024 23:00:00`
+- `holdout`: du `25 mars 2024 00:00:00` au `31 mars 2024 23:00:00`
+
+Autrement dit:
+
+- le modele apprend sur `1 janvier -> 24 mars`
+- il est ensuite evalue sur une semaine cachee `25 mars -> 31 mars`
+- cette meme semaine sert ensuite au replay pseudo-live dans Grafana
+
 ### Phase 4. Entrainement des challengers
 
 Le script [`train_models.py`](/Users/stefen/tl_demand_forecasting/scripts/train_models.py) entraine et compare les candidats.
@@ -298,6 +318,22 @@ L'unite predite est:
 - une cible `target_trips`
 
 Autrement dit, on ne predit pas des trajets individuels. On predit un volume agrege.
+
+Exemple:
+
+- `2024-03-25 08:00:00`, zone `JFK Airport` -> le modele predit un nombre attendu de trajets pour cette heure
+- `2024-03-25 18:00:00`, zone `Penn Station/Madison Sq West` -> autre prediction, toujours sur une heure precise
+
+La signification des colonnes dans PostgreSQL et Grafana est:
+
+- `predicted_trips`: le volume estime par le modele champion pour `zone x heure`
+- `actual_trips`: le volume reel observe dans le holdout pour cette meme `zone x heure`
+- `absolute_error`: `abs(predicted_trips - actual_trips)`
+
+Point important:
+
+- `actual_trips` n'est pas une simulation
+- cette valeur vient directement de `target_trips` dans le dataset holdout rejoue par [`run_replay_cycle.py`](/Users/stefen/tl_demand_forecasting/prediction_service/run_replay_cycle.py)
 
 ### Features utilisees
 
@@ -437,6 +473,22 @@ Interpretation:
 - l'erreur moyenne reste non nulle, donc ce n'est pas un systeme "parfait"
 - le pipeline est surtout credible parce qu'il mesure ses erreurs correctement
 
+Sanity-check sur la prod au `15 mars 2026`:
+
+- `20255` lignes de replay evaluees
+- moyenne `predicted_trips`: `39.80`
+- moyenne `actual_trips`: `39.05`
+- biais moyen: `+0.75`
+- total predit: `806246`
+- total reel: `791020`
+- correlation `predicted vs actual`: `0.9797`
+
+Interpretation de ce sanity-check:
+
+- les predictions suivent tres bien la forme globale de la demande
+- le modele a une legere tendance a sur-predire
+- les ecarts sont plus visibles sur certains pics de fin de journee, mais l'ensemble reste coherent
+
 ## 6. Comment le systeme decide si un modele est acceptable
 
 Les quality gates versionnees dans [`quality_gates.json`](/Users/stefen/tl_demand_forecasting/config/quality_gates.json) imposent notamment:
@@ -532,6 +584,15 @@ Panneaux:
 - `Predicted vs Actual`: courbe sur 7 jours pour la zone selectionnee ou `All`
 - `MAE for Selection`: tableau par zone ou sur la selection
 - `MAE for Selection` stat: moyenne d'erreur recente
+
+Lecture du panel `Predicted vs Actual`:
+
+- l'axe horizontal represente le temps, donc les heures rejouees
+- l'axe vertical represente le nombre de trajets
+- avec `Zone = All`, Grafana peut abreger l'axe gauche en milliers
+- par exemple `1.25` signifie environ `1250 trajets`, `2.75` signifie environ `2750 trajets`
+
+Si les labels visibles en bas tombent surtout a `00:00`, ce n'est pas parce que la prediction est quotidienne. C'est seulement le choix d'etiquetage de l'axe sur une fenetre de 7 jours. Les donnees restent bien horaires.
 
 Panneaux operations:
 

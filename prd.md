@@ -266,6 +266,19 @@ La cible est:
 
 - `target_trips`
 
+Interpretation metier:
+
+- pour chaque `zone_id`
+- a chaque `target_hour`
+- on predit le nombre de trajets attendus sur cette heure
+
+Le systeme ne predit donc pas:
+
+- un trajet individuel
+- une destination
+- un prix
+- un temps d'attente
+
 ### 6.3 Colonnes metadata
 
 Le dataset modele contient notamment:
@@ -316,6 +329,28 @@ Le pipeline applique deja plusieurs garde-fous:
 - rejet des doublons `zone x heure`
 - verification d'absence de fuite entre train et holdout
 - filtrage des timestamps hors plage deduite des fichiers sources
+
+### 6.6 Fenetre actuellement ingeree et evaluee
+
+A la date du `15 mars 2026`, le repository et la prod s'appuient sur:
+
+- `yellow_tripdata_2024-01.parquet`
+- `yellow_tripdata_2024-02.parquet`
+- `yellow_tripdata_2024-03.parquet`
+
+Le dataset complet couvre:
+
+- `1 janvier 2024 00:00:00` -> `31 mars 2024 23:00:00`
+
+Le split reel est:
+
+- `train`: `1 janvier 2024 00:00:00` -> `24 mars 2024 23:00:00`
+- `holdout`: `25 mars 2024 00:00:00` -> `31 mars 2024 23:00:00`
+
+Donc:
+
+- l'entrainement se fait sur `1 janvier -> 24 mars`
+- l'evaluation finale et le replay portent sur `25 mars -> 31 mars`
 
 ---
 
@@ -390,6 +425,24 @@ Raison:
 - le CV mesure la stabilite et la generalisation temporelle
 - le holdout final sert de verite terrain pour la promotion
 
+### 7.4.b Semantique exacte des predictions et des actuals
+
+Pour une ligne `zone x heure`:
+
+- `predicted_trips` = sortie du modele champion
+- `actual_trips` = valeur reelle `target_trips` issue du holdout
+- `absolute_error` = ecart absolu entre les deux
+
+Le replay n'invente donc pas les `actual_trips`.
+
+Le service [`run_replay_cycle.py`](/Users/stefen/tl_demand_forecasting/prediction_service/run_replay_cycle.py):
+
+1. lit une heure du holdout
+2. applique le modele champion
+3. recopie la vraie cible holdout en `actual_trips`
+4. calcule l'erreur
+5. ecrit le tout dans PostgreSQL
+
 ### 7.5 Metriques
 
 Metriques suivies:
@@ -433,6 +486,22 @@ Interpretation:
 - le systeme bat nettement les baselines
 - la performance est suffisante selon les gates en place
 - le champion a aussi battu l'ancien champion sur holdout
+
+Sanity-check production au `15 mars 2026`:
+
+- lignes evaluees: `20255`
+- moyenne `predicted_trips`: `39.80`
+- moyenne `actual_trips`: `39.05`
+- biais moyen: `+0.75`
+- total predit: `806246`
+- total reel: `791020`
+- correlation `predicted vs actual`: `0.9797`
+
+Lecture de ce sanity-check:
+
+- le modele suit bien la dynamique globale
+- il y a une legere sur-prediction
+- certaines journees et certaines heures de pointe restent plus dures a bien predire
 
 ---
 
@@ -549,6 +618,21 @@ Raison:
 
 - le replay porte sur une plage historique
 - si le dashboard etait ancre sur `NOW()`, il afficherait `No data`
+
+### 10.2.b Interpretation visuelle du panel principal
+
+Dans `Predicted vs Actual`:
+
+- l'axe du bas represente les heures rejouees
+- l'axe de gauche represente le nombre de trajets
+- avec `Zone = All`, Grafana peut afficher des valeurs abregees en milliers
+
+Exemples:
+
+- `1.25` sur l'axe vertical signifie environ `1250 trajets`
+- `2.75` signifie environ `2750 trajets`
+
+Si les labels de date visibles tombent surtout a `00:00`, cela ne veut pas dire que la prediction est journaliere. Les donnees restent bien horaires; c'est seulement l'etiquetage automatique de l'axe sur une fenetre longue.
 
 ### 10.3 Alertes
 
