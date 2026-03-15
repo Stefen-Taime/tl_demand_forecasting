@@ -261,7 +261,7 @@ terraform -chdir=terraform destroy -var-file=terraform.tfvars
 Les workflows de deploiement sont:
 
 - [`.github/workflows/deploy-staging.yml`](/Users/stefen/tl_demand_forecasting/.github/workflows/deploy-staging.yml) pour `staging`
-- [`.github/workflows/deploy.yml`](/Users/stefen/tl_demand_forecasting/.github/workflows/deploy.yml) pour `production`
+- [`.github/workflows/deploy.yml`](/Users/stefen/tl_demand_forecasting/.github/workflows/deploy.yml) pour `production`, declenche par tag `prod-v*`
 - [`.github/workflows/deploy-reusable.yml`](/Users/stefen/tl_demand_forecasting/.github/workflows/deploy-reusable.yml) pour la logique commune
 
 Variables GitHub Environment a definir pour `staging` et `production`:
@@ -284,9 +284,22 @@ Secrets GitHub Environment a definir pour `staging` et `production`:
 Recommandation:
 
 - `staging` deploye automatiquement sur `push` vers `main`
-- `production` reste un `workflow_dispatch` manuel
+- `production` deploye depuis un tag immutable `prod-v*`
+- `workflow_dispatch` reste disponible en break-glass pour `production`
 - l'etat Terraform `production` gere le role OIDC GitHub -> AWS commun, `staging` le reutilise
 - `TF_STATE_KEY` doit etre distinct par environnement, par exemple `terraform/state/staging.tfstate` et `terraform/state/production.tfstate`
 - `PROJECT_NAME` doit aussi etre distinct, par exemple `tlc-mlops-staging` et `tlc-mlops`
 
 Le workflow utilise `OIDC` pour AWS, puis ouvre une regle SSH temporaire uniquement pour l'IP du runner GitHub pendant le deploiement.
+
+Limite GitHub actuelle:
+
+- sur ce repo `private` avec le compte actuel en `GitHub Free`, les `required reviewers` d'environnement ne sont pas disponibles
+- si tu veux une vraie approbation native avant `prod`, il faut soit passer le repo en `public`, soit passer sur un plan GitHub qui expose cette capacite pour ton cas d'usage
+
+Release `production` recommande:
+
+```bash
+git tag prod-v2026.03.15.1
+git push origin prod-v2026.03.15.1
+```

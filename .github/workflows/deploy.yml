@@ -1,6 +1,9 @@
 name: Deploy Production
 
 on:
+  push:
+    tags:
+      - "prod-v*"
   workflow_dispatch:
     inputs:
       run_replay_backfill:

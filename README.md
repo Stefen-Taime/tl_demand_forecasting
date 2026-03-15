@@ -127,7 +127,7 @@ La meme logique est versionnee dans [`.github/workflows/ci.yml`](/Users/stefen/t
 Le CD GitHub est separe entre:
 
 - [`.github/workflows/deploy-staging.yml`](/Users/stefen/tl_demand_forecasting/.github/workflows/deploy-staging.yml): deploiement `staging` automatique sur `push` vers `main`
-- [`.github/workflows/deploy.yml`](/Users/stefen/tl_demand_forecasting/.github/workflows/deploy.yml): deploiement `production` manuel
+- [`.github/workflows/deploy.yml`](/Users/stefen/tl_demand_forecasting/.github/workflows/deploy.yml): deploiement `production` sur tag `prod-v*`, avec `workflow_dispatch` garde-fou en mode break-glass
 - [`.github/workflows/deploy-reusable.yml`](/Users/stefen/tl_demand_forecasting/.github/workflows/deploy-reusable.yml): logique commune de deploiement
 
 Le tout est pilote par OIDC GitHub -> AWS, sans credentials AWS longs dans GitHub.
@@ -143,9 +143,16 @@ Pre-requis GitHub:
 Bon usage:
 
 - `staging` sert de cible d'integration et peut etre plus petit ou moins couteux
-- `production` reste manuel et peut etre protege par reviewers GitHub Environment
+- `production` se deploie a partir d'un tag immutable `prod-v*`
+- `workflow_dispatch` sur `production` reste disponible en break-glass
 - le role OIDC AWS commun est gere par l'etat Terraform `production`, puis reutilise par `staging`
 - chaque environnement a son `TF_STATE_KEY`, son `PROJECT_NAME` et donc son infra separee
+
+Contrainte GitHub actuelle:
+
+- ce depot est `private` et le compte GitHub actuel est sur `GitHub Free`
+- dans cette configuration, les `required reviewers` d'environnement ne sont pas disponibles d'apres la doc GitHub
+- donc la protection `prod` repose ici sur un flux de release par tag immutable plutot que sur une approbation native d'environnement
 
 ### 8. Verifier Grafana et le replay timer
 
