@@ -1,18 +1,18 @@
 # Deployment Runbook
 
-Ordre d'execution recommande pour deployer le projet de bout en bout.
+Recommended execution order to deploy the project end to end.
 
-## 1. Prerequis
+## 1. Prerequisites
 
-Il faut avoir localement:
+You need the following locally:
 
 - `terraform`
 - `python3`
 - `pip`
-- des credentials AWS valides
-- une key pair AWS existante
+- valid AWS credentials
+- an existing AWS key pair
 
-Verifier:
+Verify:
 
 ```bash
 terraform version
@@ -20,26 +20,26 @@ python3 --version
 aws sts get-caller-identity
 ```
 
-## 2. Preparer Terraform
+## 2. Prepare Terraform
 
-Copier le fichier d'exemple:
+Copy the example files:
 
 ```bash
 cp terraform/terraform.tfvars.example terraform/terraform.tfvars
 cp terraform/backend.hcl.example terraform/backend.hcl
 ```
 
-Puis remplir dans `terraform/terraform.tfvars`:
+Then fill `terraform/terraform.tfvars` with at least:
 
-- `aws_region = "ca-central-1"` pour Montreal
-- `instance_type = "m6i.large"` recommande pour eviter les limites CPU burst des `t3.small`
+- `aws_region = "ca-central-1"` for Montreal
+- `instance_type = "m6i.large"` to avoid the burst-credit limits that made smaller `t3` instances slow
 - `allowed_cidr`
 - `key_pair_name`
-- `enable_github_actions_oidc = true` si tu veux le CD GitHub
+- `enable_github_actions_oidc = true` if you want GitHub CD
 - `github_repository = "owner/repo"`
 - `github_environments = ["staging", "production"]`
 
-## 3. Provisionner AWS
+## 3. Provision AWS
 
 ```bash
 terraform -chdir=terraform init
@@ -48,7 +48,7 @@ terraform -chdir=terraform plan -var-file=terraform.tfvars
 terraform -chdir=terraform apply -var-file=terraform.tfvars
 ```
 
-Exporter les outputs utiles:
+Export the useful outputs:
 
 ```bash
 export EC2_IP=$(terraform -chdir=terraform output -raw server_ip)
@@ -56,7 +56,7 @@ export S3_BUCKET=$(terraform -chdir=terraform output -raw s3_bucket)
 terraform -chdir=terraform output
 ```
 
-## 4. Installer l'environnement Python local
+## 4. Install the local Python environment
 
 ```bash
 python3 -m venv .venv
@@ -67,15 +67,15 @@ export SSH_PRIVATE_KEY_PATH=~/.ssh/my-aws-key.pem
 make inventory
 ```
 
-Verifier que `ansible-playbook` est maintenant disponible:
+Verify that Ansible is available:
 
 ```bash
 .venv/bin/ansible-playbook --version
 ```
 
-## 5. Configurer l'EC2
+## 5. Configure the EC2 instance
 
-Installer les collections Ansible:
+Install the Ansible collections:
 
 ```bash
 source .venv/bin/activate
@@ -83,7 +83,7 @@ cd ansible
 ../.venv/bin/ansible-galaxy collection install -r collections/requirements.yml
 ```
 
-Configurer le serveur:
+Configure the server:
 
 ```bash
 export MLFLOW_DB_PASSWORD='change-me-now'
@@ -94,9 +94,9 @@ export GRAFANA_ADMIN_PASSWORD='change-me-to-a-long-random-password'
 cd ..
 ```
 
-## 6. Ingestion des donnees TLC
+## 6. Ingest TLC data
 
-Exemple minimal:
+Current project data window:
 
 ```bash
 python scripts/build_zone_centroids.py \
@@ -105,12 +105,14 @@ python scripts/build_zone_centroids.py \
 
 python scripts/ingest_tlc.py \
   --year 2024 \
-  --months 1 2 3 \
+  --months 1 2 3 4 5 6 \
   --upload-s3 \
   --s3-bucket "$S3_BUCKET"
 ```
 
-## 7. Construire les features et le holdout
+If you want a smaller first run, you can start with fewer months and extend later.
+
+## 7. Build features and holdout
 
 ```bash
 python scripts/build_features.py \
@@ -118,29 +120,30 @@ python scripts/build_features.py \
   --s3-bucket "$S3_BUCKET"
 ```
 
-Le build filtre aussi les pickups qui tombent hors de la plage temporelle declaree par les fichiers sources pour eliminer les dates aberrantes.
+The build also filters pickups that fall outside the time range implied by the raw monthly files, which removes bad timestamps.
 
-Fichiers attendus:
+Expected outputs:
 
 - `data/processed/features.parquet`
 - `data/processed/train_features.parquet`
 - `data/holdout/holdout_features.parquet`
 
-## 8. Ouvrir le tunnel MLflow
+## 8. Open the MLflow tunnel
 
-Dans un **autre terminal**, lancer:
+In a **separate terminal**, run:
 
 ```bash
 ssh -i "$SSH_PRIVATE_KEY_PATH" -N -L 5000:127.0.0.1:5000 ubuntu@$(terraform -chdir=terraform output -raw server_ip)
 ```
-Quand le tunnel tourne, dans ton terminal principal:
+
+When the tunnel is up, in your main terminal:
 
 ```bash
 source .venv/bin/activate
 export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
 ```
 
-## 9. Entrainer les modeles
+## 9. Train the models
 
 ```bash
 python scripts/train_models.py
@@ -150,19 +153,19 @@ python scripts/promote_champion.py
 
 Notes:
 
-- `train_models.py` loggue d'abord des baselines puis `lightgbm` et `xgboost`
-- la validation est une `expanding-window CV` sur le train set + un `holdout` final gele
-- `promote_champion.py` ne promeut que `lightgbm` ou `xgboost`
-- la promotion est bloquee si le candidat ne bat pas la meilleure baseline, si `holdout_mase >= 1`, ou s'il regresse face au champion courant
-- les sorties de decision sont ecrites dans `reports/run_summary.csv`, `reports/best_run.json` et `reports/promotion_decision.json`
+- `train_models.py` logs baselines first, then `lightgbm` and `xgboost`
+- validation is expanding-window CV on the training set plus one frozen final holdout
+- `promote_champion.py` only promotes `lightgbm` or `xgboost`
+- promotion is blocked if the challenger does not beat the best baseline, if `holdout_mase >= 1`, or if it regresses versus the current champion
+- decision artifacts are written into `reports/run_summary.csv`, `reports/best_run.json`, and `reports/promotion_decision.json`
 
-## 10. Verifier les services AWS
+## 10. Verify AWS services
 
 ```bash
 curl http://$EC2_IP:3000/api/health
 ```
 
-Verifier les services systemd:
+Verify the systemd services:
 
 ```bash
 ssh ubuntu@$EC2_IP 'systemctl status postgresql --no-pager'
@@ -171,7 +174,7 @@ ssh ubuntu@$EC2_IP 'systemctl status grafana-server --no-pager'
 ssh ubuntu@$EC2_IP 'systemctl status tlc-replay.timer --no-pager'
 ```
 
-## 10.b Executer les quality gates
+## 10.b Run the quality gates
 
 ```bash
 make test
@@ -180,46 +183,46 @@ make tf-validate
 make ansible-syntax
 ```
 
-Ces checks sont aussi reproduits dans [`.github/workflows/ci.yml`](/Users/stefen/tl_demand_forecasting/.github/workflows/ci.yml).
+These checks are also reproduced in [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 
-## 11. Lancer un cycle de replay manuel
+## 11. Run one manual replay cycle
 
-Pour ne pas attendre l'heure suivante:
+If you do not want to wait for the next scheduled timer tick:
 
 ```bash
 ssh ubuntu@$EC2_IP 'sudo systemctl start tlc-replay.service'
 ssh ubuntu@$EC2_IP 'sudo journalctl -u tlc-replay.service -n 50 --no-pager'
 ```
 
-Pour backfiller plusieurs heures d'un coup:
+To backfill the full holdout window:
 
 ```bash
 export EC2_IP=$(terraform -chdir=terraform output -raw server_ip)
 make replay-backfill
 ```
 
-Le backfill complet purge aussi les lignes de replay orphelines qui ne font plus partie du holdout courant.
+The full backfill also prunes stale replay rows that no longer belong to the current holdout.
 
-## 12. Ouvrir Grafana
+## 12. Open Grafana
 
 ```bash
 echo "http://$EC2_IP:3000"
 ```
 
-Le dashboard provisionne est:
+Provisioned dashboards:
 
 - `TLC Demand Forecasting`
 - `TLC Operations`
 
-Alertes provisionnees:
+Provisioned alerts:
 
 - `TLC Replay Freshness`
 - `TLC Replay Coverage`
 - `TLC Model MAE 24h`
 
-## 13. Boucle de travail normale
+## 13. Normal working loop
 
-Quand l'infra est deja en place:
+Once infrastructure is already in place:
 
 ```bash
 source .venv/bin/activate
@@ -228,32 +231,32 @@ export S3_BUCKET=$(terraform -chdir=terraform output -raw s3_bucket)
 export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
 ```
 
-Puis:
+Then the normal iteration cycle is:
 
-1. modifier les scripts
-2. reconstruire les features si necessaire
-3. relancer le tunnel MLflow
-4. relancer `train_models.py`
-5. relancer `promote_champion.py`
-6. lancer un `tlc-replay.service` manuel pour voir le resultat tout de suite
+1. change scripts or parameters
+2. rebuild features if needed
+3. reopen the MLflow tunnel
+4. rerun `train_models.py`
+5. rerun `promote_champion.py`
+6. run `tlc-replay.service` manually to see the result immediately
 
 ## 14. Databricks
 
-Les notebooks Databricks sont optionnels:
+The Databricks notebooks are optional:
 
 - `databricks/01_eda.py`
 - `databricks/02_feature_prototype.py`
 - `databricks/03_sandbox_training.py`
 
-Tu peux les importer dans Databricks pour:
+You can import them into Databricks for:
 
 - EDA
-- proto feature engineering
-- demo notebook
+- feature engineering prototypes
+- notebook demo work
 
-Mais le deploiement principal n'en depend pas.
+The main deployment path does not depend on them.
 
-## 15. Destruction
+## 15. Destroy everything
 
 ```bash
 terraform -chdir=terraform destroy -var-file=terraform.tfvars
@@ -261,13 +264,13 @@ terraform -chdir=terraform destroy -var-file=terraform.tfvars
 
 ## 16. GitHub CD via OIDC
 
-Les workflows de deploiement sont:
+Deployment workflows:
 
-- [`.github/workflows/deploy-staging.yml`](/Users/stefen/tl_demand_forecasting/.github/workflows/deploy-staging.yml) pour `staging`
-- [`.github/workflows/deploy.yml`](/Users/stefen/tl_demand_forecasting/.github/workflows/deploy.yml) pour `production`, declenche par tag `prod-v*`
-- [`.github/workflows/deploy-reusable.yml`](/Users/stefen/tl_demand_forecasting/.github/workflows/deploy-reusable.yml) pour la logique commune
+- [`.github/workflows/deploy-staging.yml`](.github/workflows/deploy-staging.yml) for `staging`
+- [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) for `production`, triggered by `prod-v*` tags
+- [`.github/workflows/deploy-reusable.yml`](.github/workflows/deploy-reusable.yml) for shared logic
 
-Variables GitHub Environment a definir pour `staging` et `production`:
+GitHub Environment variables to define for both `staging` and `production`:
 
 - `AWS_DEPLOY_ROLE_ARN`
 - `AWS_REGION`
@@ -279,30 +282,30 @@ Variables GitHub Environment a definir pour `staging` et `production`:
 - `TF_STATE_KEY`
 - `TF_LOCK_TABLE`
 
-Secrets GitHub Environment a definir pour `staging` et `production`:
+GitHub Environment secrets to define for both `staging` and `production`:
 
 - `EC2_SSH_PRIVATE_KEY`
 - `MLFLOW_DB_PASSWORD`
 - `GRAFANA_ADMIN_PASSWORD`
 
-Recommandation:
+Recommended setup:
 
-- `staging` deploye automatiquement sur `push` vers `main`
-- `production` deploye depuis un tag immutable `prod-v*`
-- `workflow_dispatch` reste disponible en break-glass pour `production`
-- l'etat Terraform `production` gere le role OIDC GitHub -> AWS commun, `staging` le reutilise
-- `TF_STATE_KEY` doit etre distinct par environnement, par exemple `terraform/state/staging.tfstate` et `terraform/state/production.tfstate`
-- `PROJECT_NAME` doit aussi etre distinct, par exemple `tlc-mlops-staging` et `tlc-mlops`
-- `GRAFANA_ADMIN_PASSWORD` doit etre renseigne avant le premier deploy pour eviter de laisser Grafana sur le mot de passe par defaut
+- `staging` deploys automatically on `push` to `main`
+- `production` deploys from an immutable `prod-v*` tag
+- `workflow_dispatch` remains available as break-glass for production
+- the `production` Terraform state manages the shared GitHub -> AWS OIDC role, and `staging` reuses it
+- `TF_STATE_KEY` must be distinct per environment, for example `terraform/state/staging.tfstate` and `terraform/state/production.tfstate`
+- `PROJECT_NAME` should also be distinct, for example `tlc-mlops-staging` and `tlc-mlops`
+- `GRAFANA_ADMIN_PASSWORD` must be set before the first deployment so Grafana never stays on a default password
 
-Le workflow utilise `OIDC` pour AWS, puis ouvre une regle SSH temporaire uniquement pour l'IP du runner GitHub pendant le deploiement.
+The workflow uses OIDC for AWS authentication, then opens a temporary SSH rule only for the GitHub runner IP during deployment.
 
-Limite GitHub actuelle:
+Current GitHub limitation:
 
-- sur ce repo `private` avec le compte actuel en `GitHub Free`, les `required reviewers` d'environnement ne sont pas disponibles
-- si tu veux une vraie approbation native avant `prod`, il faut soit passer le repo en `public`, soit passer sur un plan GitHub qui expose cette capacite pour ton cas d'usage
+- on a `private` repo with the current `GitHub Free` plan, native environment `required reviewers` are not available
+- if you want native approval before production, either make the repo `public` or move to a GitHub plan that exposes that feature for your setup
 
-Release `production` recommande:
+Recommended production release flow:
 
 ```bash
 git tag prod-v2026.03.15.1

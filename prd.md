@@ -1,131 +1,131 @@
 # PRD v3 - TLC Demand Forecasting MLOps
 
-**Projet**: TLC Demand Forecasting MLOps
+**Project**: TLC Demand Forecasting MLOps
 **Version**: v3.0
-**Date**: 15 mars 2026
-**Statut**: aligne sur l'implementation reelle du repository
+**Date**: March 15, 2026
+**Status**: aligned with the current repository and deployed implementation
 
 ---
 
-## 0. Resume executif
+## 0. Executive Summary
 
-Ce projet construit une chaine MLOps complete pour prevoir la demande TLC par `zone x heure`, evaluer plusieurs modeles, promouvoir un `champion`, puis exposer les predictions et les erreurs dans Grafana.
+This project builds a complete MLOps chain to forecast TLC taxi demand at the `zone x hour` level, evaluate multiple models, promote a guarded `champion`, and expose predictions and errors through Grafana.
 
-Le systeme n'essaie pas de simuler un vrai temps reel TLC, car la source publique ne le permet pas. A la place, il utilise un `replay historique`:
+The system does not pretend that the public TLC dataset is a real-time stream. Instead, it uses a historical replay design:
 
-- un holdout final est reserve apres le training
-- un service sur EC2 rejoue ce holdout heure par heure
-- le modele `champion` produit les predictions
-- les vraies observations du holdout servent d'`actuals`
-- Grafana affiche predictions, erreurs et tendances
+- a final holdout is carved out after training data is prepared
+- a service on EC2 replays that holdout one hour at a time
+- the `champion` model generates predictions
+- the real holdout targets are reused as `actuals`
+- Grafana displays predictions, errors, and trends
 
-Le projet est "prod-like" car il contient:
+The project is intentionally "prod-like" because it includes:
 
-- une infra AWS versionnee
-- une separation `staging` / `production`
-- du CI/CD GitHub
-- des quality gates
-- un vrai protocole de validation temporelle
-- une promotion modele sous conditions
-- des alertes d'exploitation
-
----
-
-## 1. Probleme et objectif
-
-### Probleme
-
-Le projet doit montrer comment transformer des donnees de trajets taxis brutes en un systeme MLOps lisible et defendable.
-
-Sans cadre MLOps, on obtient souvent:
-
-- des notebooks impossibles a rejouer
-- des metriques fragiles
-- des modeles sans gouvernance
-- aucun lien entre le training et l'observabilite
-
-### Objectif
-
-Construire un systeme qui couvre tout le cycle:
-
-1. ingerer les donnees TLC brutes
-2. produire un dataset `zone x heure`
-3. entrainer plusieurs candidats
-4. les comparer a des baselines
-5. promouvoir un `champion` si et seulement si les garde-fous passent
-6. faire tourner un replay historique
-7. afficher le resultat dans Grafana
-
-### Resultat attendu
-
-A la fin, un observateur doit pouvoir comprendre:
-
-- d'ou viennent les donnees
-- comment les features sont construites
-- quels modeles ont ete compares
-- pourquoi le champion a ete promu
-- comment le dashboard est alimente
-- comment l'infra est deployee et securisee
+- versioned AWS infrastructure
+- separate `staging` and `production`
+- GitHub CI/CD
+- quality gates
+- a real time-aware validation protocol
+- guarded model promotion
+- operational alerts
 
 ---
 
-## 2. Scope et non-goals
+## 1. Problem and Objective
+
+### Problem
+
+The project needs to show how raw taxi trip files can be turned into an MLOps system that is understandable, reviewable, and technically defensible.
+
+Without an MLOps frame, the common outcome is:
+
+- notebooks that cannot be replayed
+- fragile metrics
+- models without release governance
+- no connection between training and observability
+
+### Objective
+
+Build a system that covers the full loop:
+
+1. ingest raw TLC data
+2. produce a `zone x hour` dataset
+3. train multiple candidates
+4. compare them to required baselines
+5. promote a `champion` only if the gates pass
+6. run a historical replay
+7. surface the result in Grafana
+
+### Expected outcome
+
+At the end, an observer should be able to understand:
+
+- where the data comes from
+- how features are built
+- which models were compared
+- why the promoted model won
+- how the dashboard is populated
+- how the infrastructure is deployed and secured
+
+---
+
+## 2. Scope and Non-Goals
 
 ### In scope
 
-- provisionnement AWS avec Terraform
-- configuration EC2 avec Ansible
-- stockage S3
-- tracking et registry avec MLflow
-- predictions et monitoring dans PostgreSQL + Grafana
-- CI GitHub Actions
-- CD `staging` et `production`
-- validation temporelle et holdout final
-- quality gates et alertes
+- AWS provisioning with Terraform
+- EC2 configuration with Ansible
+- S3 storage
+- MLflow tracking and model registry
+- predictions and monitoring in PostgreSQL + Grafana
+- GitHub Actions CI
+- `staging` and `production` CD
+- time-aware validation and a frozen final holdout
+- quality gates and alerts
 
-### Hors scope
+### Out of scope
 
-- vrai streaming TLC temps reel
-- serving HTTP de predictions a faible latence
+- true TLC real-time streaming
+- low-latency HTTP serving for online predictions
 - Kubernetes
-- feature store dedie
+- a dedicated feature store
 - online learning
-- orchestration type Airflow ou Dagster
-- experimentation distribuee a grande echelle
+- Airflow or Dagster orchestration
+- large-scale distributed experimentation
 
-### Role de Databricks
+### Databricks role
 
-Databricks n'est pas une dependance critique.
+Databricks is not a production dependency.
 
-Il reste optionnel pour:
+It remains optional for:
 
-- EDA
-- demonstration notebook
-- prototypage rapide
+- exploratory analysis
+- notebook demos
+- fast feature prototyping
 
-Le chemin de production ne depend pas de Databricks.
-
----
-
-## 3. Utilisateurs et cas d'usage
-
-### Utilisateur principal
-
-Un recruteur technique, un hiring manager ou une equipe data/ML qui veut evaluer la maturite du projet.
-
-### Cas d'usage principaux
-
-1. Lire le pipeline de bout en bout
-2. Rejouer l'entrainement
-3. Voir un modele promu selon des criteres explicites
-4. Ouvrir Grafana et comprendre les erreurs
-5. Deployer l'infra en `staging` puis `production`
+The deployed path does not depend on Databricks.
 
 ---
 
-## 4. Architecture cible
+## 3. Users and Use Cases
 
-### 4.1 Vue systeme
+### Primary user
+
+A technical recruiter, hiring manager, or data/ML team evaluating the maturity of the project.
+
+### Main use cases
+
+1. Read the pipeline end to end
+2. Replay the full training and promotion flow
+3. Inspect a model promotion backed by explicit gates
+4. Open Grafana and interpret the prediction errors
+5. Deploy infrastructure to `staging` and `production`
+
+---
+
+## 4. Target Architecture
+
+### 4.1 System view
 
 ```text
                                +-----------------------+
@@ -136,8 +136,8 @@ Un recruteur technique, un hiring manager ou une equipe data/ML qui veut evaluer
                                            | OIDC + CI/CD
                                            v
  +----------------------+        +-----------------------------+
- | Machine locale       |        | AWS environment            |
- |                      |        | staging ou production      |
+ | Local machine        |        | AWS environment            |
+ |                      |        | staging or production      |
  | - terraform          |        |                             |
  | - ansible            |        | +-------------------------+ |
  | - ingest_tlc.py      |        | | EC2 m6i.large           | |
@@ -160,13 +160,13 @@ Un recruteur technique, un hiring manager ou une equipe data/ML qui veut evaluer
  +----------------------+                                          |
                                                                    |
                          Grafana <----------------------------------+
-                         lit zone_predictions et expose la vue metier
+                         reads zone_predictions and exposes the business view
 ```
 
-### 4.2 Vue data lineage
+### 4.2 Data lineage
 
 ```text
-Fichiers TLC bruts
+Raw TLC files
     |
     +--> scripts/ingest_tlc.py
     |
@@ -175,164 +175,130 @@ Fichiers TLC bruts
     +--> data/raw/taxi_zone_centroids.csv
             |
             v
- scripts/build_features.py
+scripts/build_features.py
     |
     +--> data/processed/features.parquet
     +--> data/processed/train_features.parquet
     +--> data/holdout/holdout_features.parquet
             |
             v
- scripts/train_models.py
+scripts/train_models.py
     |
     +--> MLflow runs
     +--> MLflow artifacts
             |
             v
- scripts/evaluate_models.py
+scripts/evaluate_models.py
     |
     +--> reports/run_summary.csv
     +--> reports/best_run.json
             |
             v
- scripts/promote_champion.py
+scripts/promote_champion.py
     |
     +--> MLflow Registry alias champion
     +--> reports/promotion_decision.json
             |
             v
- prediction_service/run_replay_cycle.py
+prediction_service/run_replay_cycle.py
     |
     +--> PostgreSQL.zone_predictions
     +--> PostgreSQL.replay_state
             |
             v
- Grafana dashboard + alert rules
+Grafana dashboards + alert rules
 ```
 
-### 4.3 Pourquoi cette architecture
+### 4.3 Why this architecture
 
-Cette architecture a ete retenue car elle:
+This architecture was chosen because it:
 
-- isole le training et l'exploitation
-- garde MLflow prive
-- versionne l'infra
-- permet un `staging` et un `production` realistes
-- evite de raconter une fausse histoire de streaming
+- separates training from operations
+- keeps MLflow private
+- versions the infrastructure
+- supports realistic `staging` and `production`
+- avoids inventing a fake streaming story
 
 ---
 
-## 5. Composants et responsabilites
+## 5. Components and Responsibilities
 
-| Composant | Fichiers | Ce qu'il fait | Pourquoi il existe |
+| Component | Files | What it does | Why it exists |
 | --- | --- | --- | --- |
-| Terraform | [`terraform/main.tf`](/Users/stefen/tl_demand_forecasting/terraform/main.tf) | cree EC2, EIP, S3, IAM, SG, OIDC | rendre l'infra reproductible |
-| Ansible base | [`site.yml`](/Users/stefen/tl_demand_forecasting/ansible/playbooks/site.yml) | installe le socle Ubuntu | eviter toute config manuelle |
-| Ansible PostgreSQL | [`postgresql.yml`](/Users/stefen/tl_demand_forecasting/ansible/playbooks/postgresql.yml) | cree db/users/schema | servir de backend MLflow et de db predictions |
-| Ansible MLflow | [`mlflow.yml`](/Users/stefen/tl_demand_forecasting/ansible/playbooks/mlflow.yml) | installe MLflow et le service systemd | suivre et registrer les modeles |
-| Ansible Grafana | [`grafana.yml`](/Users/stefen/tl_demand_forecasting/ansible/playbooks/grafana.yml) | installe Grafana, datasource, dashboard, alertes | donner une lecture metier |
-| Ansible replay | [`prediction_timer.yml`](/Users/stefen/tl_demand_forecasting/ansible/playbooks/prediction_timer.yml) | deploie le service replay + timer | simuler un flux de production |
-| Ingestion | [`ingest_tlc.py`](/Users/stefen/tl_demand_forecasting/scripts/ingest_tlc.py) | telecharge les parquets TLC | figer la source brute |
-| Geographie | [`build_zone_centroids.py`](/Users/stefen/tl_demand_forecasting/scripts/build_zone_centroids.py) | calcule les centroides de zones | alimenter le Geomap |
-| Feature engineering | [`build_features.py`](/Users/stefen/tl_demand_forecasting/scripts/build_features.py) | construit le dataset modele | transformer la donnee brute en probleme supervise |
-| Training | [`train_models.py`](/Users/stefen/tl_demand_forecasting/scripts/train_models.py) | entraine baselines et challengers | comparer proprement les candidats |
-| Evaluation | [`evaluate_models.py`](/Users/stefen/tl_demand_forecasting/scripts/evaluate_models.py) | exporte des rapports lisibles | piloter quality gates et review |
-| Promotion | [`promote_champion.py`](/Users/stefen/tl_demand_forecasting/scripts/promote_champion.py) | met a jour `candidate` / `champion` | gouverner la release modele |
-| Quality gates | [`check_quality.py`](/Users/stefen/tl_demand_forecasting/scripts/check_quality.py) | impose des seuils versionnes | eviter les regressions silencieuses |
-| Replay service | [`run_replay_cycle.py`](/Users/stefen/tl_demand_forecasting/prediction_service/run_replay_cycle.py) | genere predictions + actuals | fermer la boucle monitoring |
+| Terraform | [`terraform/main.tf`](terraform/main.tf) | creates EC2, EIP, S3, IAM, Security Groups, OIDC | makes infrastructure reproducible |
+| Ansible base | [`ansible/playbooks/site.yml`](ansible/playbooks/site.yml) | installs the Ubuntu foundation | avoids manual server setup |
+| Ansible PostgreSQL | [`ansible/playbooks/postgresql.yml`](ansible/playbooks/postgresql.yml) | creates databases, users, schema | backs MLflow and prediction storage |
+| Ansible MLflow | [`ansible/playbooks/mlflow.yml`](ansible/playbooks/mlflow.yml) | installs MLflow and systemd | tracks runs and registry state |
+| Ansible Grafana | [`ansible/playbooks/grafana.yml`](ansible/playbooks/grafana.yml) | installs Grafana, datasource, dashboards, alerts | exposes business and ops visibility |
+| Ansible replay | [`ansible/playbooks/prediction_timer.yml`](ansible/playbooks/prediction_timer.yml) | deploys replay service and timer | simulates a production feed |
+| Ingestion | [`scripts/ingest_tlc.py`](scripts/ingest_tlc.py) | downloads TLC parquet files | freezes the raw source |
+| Geography | [`scripts/build_zone_centroids.py`](scripts/build_zone_centroids.py) | computes zone centroids | powers the geomap |
+| Feature engineering | [`scripts/build_features.py`](scripts/build_features.py) | builds the model dataset | converts raw trips into supervised rows |
+| Training | [`scripts/train_models.py`](scripts/train_models.py) | trains baselines and challengers | compares candidates correctly |
+| Evaluation | [`scripts/evaluate_models.py`](scripts/evaluate_models.py) | exports readable reports | supports review and CI gates |
+| Promotion | [`scripts/promote_champion.py`](scripts/promote_champion.py) | updates `candidate` and `champion` | governs model release |
+| Quality gates | [`scripts/check_quality.py`](scripts/check_quality.py) | enforces versioned thresholds | blocks silent regressions |
+| Replay service | [`prediction_service/run_replay_cycle.py`](prediction_service/run_replay_cycle.py) | writes predictions plus actuals | closes the monitoring loop |
 
 ---
 
-## 6. Contrat de donnees
+## 6. Data Contract
 
-### 6.1 Source brute
+### 6.1 Raw sources
 
-Source principale:
+Main source:
 
-- fichiers TLC mensuels `yellow_tripdata_YYYY-MM.parquet`
+- monthly TLC files `yellow_tripdata_YYYY-MM.parquet`
 
-Sources annexes:
+Supporting sources:
 
 - `taxi_zone_lookup.csv`
-- shapefile `taxi_zones.zip`
+- `taxi_zones.zip` shapefile
 
-### 6.2 Grain d'analyse
+### 6.2 Analysis grain
 
-Le grain du projet est:
+The prediction grain is:
 
-- `zone_id`
-- `target_hour`
+- one TLC pickup zone
+- one hour
+- one target value: `target_trips`
 
-La cible est:
+The system forecasts aggregate demand, not individual rides.
 
-- `target_trips`
+### 6.3 Metadata columns
 
-Interpretation metier:
+Key metadata attached to each row:
 
-- pour chaque `zone_id`
-- a chaque `target_hour`
-- on predit le nombre de trajets attendus sur cette heure
-
-Le systeme ne predit donc pas:
-
-- un trajet individuel
-- une destination
-- un prix
-- un temps d'attente
-
-### 6.3 Colonnes metadata
-
-Le dataset modele contient notamment:
-
-- `target_hour`
 - `zone_id`
 - `zone_name`
 - `borough`
 - `latitude`
 - `longitude`
-- `target_trips`
+- `target_hour`
 
 ### 6.4 Features
 
-Features calendaires:
+Feature groups:
 
-- `hour_of_day`
-- `day_of_week`
-- `day_of_month`
-- `month`
-- `is_weekend`
-- `hour_sin`
-- `hour_cos`
-- `dow_sin`
-- `dow_cos`
+- calendar: `hour_of_day`, `day_of_week`, `day_of_month`, `month`, `is_weekend`
+- cyclical encodings: `hour_sin`, `hour_cos`, `dow_sin`, `dow_cos`
+- lags: `lag_1h`, `lag_2h`, `lag_24h`, `lag_168h`
+- rolling statistics: `rolling_mean_6h`, `rolling_mean_24h`, `rolling_std_24h`
+- short-term ratio: `trend_ratio`
 
-Features d'historique:
+### 6.5 Data quality rules
 
-- `lag_1h`
-- `lag_2h`
-- `lag_24h`
-- `lag_168h`
+The data preparation step enforces:
 
-Features de tendance:
+- non-null `tpep_pickup_datetime`
+- non-null `PULocationID`
+- timestamp filtering based on the month bounds implied by the raw filenames
+- temporal ordering by `zone_id` and `target_hour`
+- no train/holdout overlap
 
-- `rolling_mean_6h`
-- `rolling_mean_24h`
-- `rolling_std_24h`
-- `trend_ratio`
+### 6.6 Currently ingested and evaluated window
 
-### 6.5 Regles de qualite data
-
-Le pipeline applique deja plusieurs garde-fous:
-
-- rejet des datasets vides
-- rejet des `target_hour` nuls
-- rejet des targets negatives
-- rejet des doublons `zone x heure`
-- verification d'absence de fuite entre train et holdout
-- filtrage des timestamps hors plage deduite des fichiers sources
-
-### 6.6 Fenetre actuellement ingeree et evaluee
-
-A la date du `15 mars 2026`, le repository et la prod s'appuient sur:
+As of `March 15, 2026`, the repository and production deployment use:
 
 - `yellow_tripdata_2024-01.parquet`
 - `yellow_tripdata_2024-02.parquet`
@@ -341,57 +307,58 @@ A la date du `15 mars 2026`, le repository et la prod s'appuient sur:
 - `yellow_tripdata_2024-05.parquet`
 - `yellow_tripdata_2024-06.parquet`
 
-Le dataset complet couvre:
+The full dataset covers:
 
-- `1 janvier 2024 00:00:00` -> `30 juin 2024 23:00:00`
+- `2024-01-01 00:00:00` -> `2024-06-30 23:00:00`
 
-Le split reel est:
+The real split is:
 
-- `train`: `1 janvier 2024 00:00:00` -> `23 juin 2024 23:00:00`
-- `holdout`: `24 juin 2024 00:00:00` -> `30 juin 2024 23:00:00`
+- `train`: `2024-01-01 00:00:00` -> `2024-06-23 23:00:00`
+- `holdout`: `2024-06-24 00:00:00` -> `2024-06-30 23:00:00`
 
-Donc:
+So:
 
-- l'entrainement se fait sur `1 janvier -> 23 juin`
-- l'evaluation finale et le replay portent sur `24 juin -> 30 juin`
+- training happens on `January 1 -> June 23`
+- final evaluation and replay happen on `June 24 -> June 30`
 
 ---
 
-## 7. Conception ML
+## 7. ML Design
 
-### 7.1 Pourquoi un probleme tabulaire
+### 7.1 Why a tabular forecasting problem
 
-Le projet traite un forecasting agrege et non une sequence multiserie deep learning.
+This project treats forecasting as an aggregated tabular problem rather than a deep sequence modeling problem.
 
-Raisons:
+Reasons:
 
-- la granularite `zone x heure` se prete bien aux arbres de gradient boosting
-- le cout d'exploitation reste faible
-- la lecture du modele est plus simple pour un projet portfolio
+- the `zone x hour` grain fits gradient boosting well
+- the feature set is interpretable
+- the operational complexity stays moderate
+- the dataset size does not require distributed deep learning
 
-### 7.2 Baselines obligatoires
+### 7.2 Required baselines
 
-Baselines implementees:
+The pipeline always logs the following baselines:
 
 - `seasonal_naive_24h`
 - `seasonal_naive_168h`
 - `rolling_mean_24h`
 
-Raison:
+Why they are mandatory:
 
-- une baseline indique si la complexite d'un modele est justifiee
-- `lag_24h` et `lag_168h` sont des references naturelles sur une serie horaire
+- `lag_24h` and `lag_168h` are natural references for hourly taxi demand
+- if a complex model cannot beat them, it should not be promoted
 
-### 7.3 Modeles challengers
+### 7.3 Challenger models
 
-Modeles actuellement supportes:
+Current challengers:
 
-- LightGBM
-- XGBoost
+- `lightgbm`
+- `xgboost`
 
-Hyperparametres actuels:
+Current parameter sets:
 
-`LightGBM`
+`lightgbm`
 
 - `n_estimators=500`
 - `learning_rate=0.05`
@@ -400,289 +367,292 @@ Hyperparametres actuels:
 - `colsample_bytree=0.8`
 - `random_state=42`
 
-`XGBoost`
+`xgboost`
 
 - `n_estimators=400`
 - `learning_rate=0.05`
 - `max_depth=8`
 - `subsample=0.8`
 - `colsample_bytree=0.8`
-- `objective=reg:squarederror`
+- `objective='reg:squarederror'`
 - `random_state=42`
 
-Raisons du choix:
+Why these challengers:
 
-- tres performants sur tabulaire
-- robustes avec des features heterogenes
-- faciles a logger et a recharger dans MLflow
+- they are strong tabular baselines
+- they work well with the engineered lag features
+- they are easier to operationalize than heavier alternatives for this scope
 
-### 7.4 Strategie de validation
+### 7.4 Validation strategy
 
-Le projet utilise un protocole a deux etages:
+Validation has two layers:
 
-1. `expanding-window CV` sur le train
-2. `holdout` final gele sur 7 jours
+1. expanding-window cross-validation on the training set
+2. one frozen final holdout over the last `7 days`
 
-Raison:
+The exact holdout split is not a hand-picked date. It is driven by the last `168` hours of the available dataset, which corresponds to one full week.
 
-- le CV mesure la stabilite et la generalisation temporelle
-- le holdout final sert de verite terrain pour la promotion
+Why `7 days`:
 
-### 7.4.b Semantique exacte des predictions et des actuals
+- the prediction grain is hourly
+- a full week captures weekday and weekend effects
+- the model explicitly uses `lag_168h`
+- it leaves most of the data available for fitting
 
-Pour une ligne `zone x heure`:
+### 7.4.b Exact semantics of predictions and actuals
 
-- `predicted_trips` = sortie du modele champion
-- `actual_trips` = valeur reelle `target_trips` issue du holdout
-- `absolute_error` = ecart absolu entre les deux
+For one `zone x hour` row:
 
-Le replay n'invente donc pas les `actual_trips`.
+- `predicted_trips` = output of the current `champion`
+- `actual_trips` = true `target_trips` value from the frozen holdout
+- `absolute_error` = absolute difference between the two
 
-Le service [`run_replay_cycle.py`](/Users/stefen/tl_demand_forecasting/prediction_service/run_replay_cycle.py):
+The replay does not fabricate the actuals.
 
-1. lit une heure du holdout
-2. applique le modele champion
-3. recopie la vraie cible holdout en `actual_trips`
-4. calcule l'erreur
-5. ecrit le tout dans PostgreSQL
+[`prediction_service/run_replay_cycle.py`](prediction_service/run_replay_cycle.py):
 
-### 7.5 Metriques
+1. reads one holdout hour
+2. applies the champion model
+3. copies the real holdout target into `actual_trips`
+4. computes the error
+5. writes the result into PostgreSQL
 
-Metriques suivies:
+### 7.5 Metrics
+
+Tracked metrics:
 
 - `MAE`
 - `RMSE`
 - `MASE`
 
-Raison:
+Interpretation:
 
-- `MAE` parle bien metier
-- `RMSE` sanctionne davantage les grosses erreurs
-- `MASE` permet de se comparer a une reference naive
+- `MAE` = average miss in trips per `zone x hour`
+- `RMSE` = stronger penalty for large misses
+- `MASE < 1` = model beats a seasonal naive reference
 
 ### 7.6 Quality gates
 
-Les quality gates versionnees imposent:
+Promotion and CI rely on explicit thresholds:
 
-- modeles autorises: `lightgbm`, `xgboost`
 - `holdout_mae <= 8.0`
 - `holdout_mase <= 1.0`
-- `cv_mae_std <= 1.0`
-- amelioration holdout vs meilleure baseline `>= 10%`
-- au moins 3 baselines
-- promotion approuvee
-- toutes les gates de promotion a `true`
+- improvement versus best baseline holdout MAE `>= 10%`
 
-### 7.7 Etat actuel du modele
+The intent is to turn model release into a governed decision instead of an ad hoc choice.
 
-Snapshot courant des rapports:
+### 7.7 Current model state
+
+Current report snapshot:
 
 - champion: `lightgbm`
 - `holdout_mae = 6.4256`
 - `holdout_rmse = 14.3644`
 - `holdout_mase = 0.4161`
-- gain vs meilleure baseline: `+46.34%`
-- version registry approuvee: `4`
+- improvement versus best baseline: `+46.34%`
+- approved registry version: `4`
 
 Interpretation:
 
-- le systeme bat nettement les baselines
-- la performance est suffisante selon les gates en place
-- le champion a aussi battu l'ancien champion sur holdout
+- the system clearly beats the baselines
+- the performance is inside the current gates
+- the challenger also beat the previous champion on holdout
 
-Sanity-check production au `15 mars 2026`:
+Production sanity check on `March 15, 2026`:
 
-- lignes evaluees: `20574`
-- fenetre rejouee: `2024-06-24 00:00:00` -> `2024-06-30 23:00:00`
-- moyenne `predicted_trips`: `39.27`
-- moyenne `actual_trips`: `39.38`
-- biais moyen: `-0.11`
-- total predit: `807883`
-- total reel: `810193`
+- evaluated rows: `20574`
+- replay window: `2024-06-24 00:00:00` -> `2024-06-30 23:00:00`
+- mean `predicted_trips`: `39.27`
+- mean `actual_trips`: `39.38`
+- mean bias: `-0.11`
+- total predicted: `807883`
+- total actual: `810193`
 - correlation `predicted vs actual`: `0.9817`
 
-Lecture de ce sanity-check:
+How to read this:
 
-- le modele suit bien la dynamique globale
-- il y a une legere sous-prediction
-- certaines journees et certaines heures de pointe restent plus dures a bien predire
-
----
-
-## 8. Promotion et gouvernance modele
-
-### 8.1 Regles de promotion
-
-Un challenger ne devient `champion` que si:
-
-- il bat la meilleure baseline
-- il a `holdout_mase < 1`
-- il ne regresse pas face au `champion` courant
-
-### 8.2 Etats MLflow utilises
-
-MLflow Registry utilise deux aliases:
-
-- `candidate`
-- `champion`
-
-Le flux est:
-
-1. enregistrer le challenger
-2. lui donner l'alias `candidate`
-3. n'affecter `champion` que si toutes les gates passent
-
-### 8.3 Artefacts de decision
-
-Les artefacts exportes sont:
-
-- [`reports/run_summary.csv`](/Users/stefen/tl_demand_forecasting/reports/run_summary.csv)
-- [`reports/best_run.json`](/Users/stefen/tl_demand_forecasting/reports/best_run.json)
-- [`reports/promotion_decision.json`](/Users/stefen/tl_demand_forecasting/reports/promotion_decision.json)
-- [`reports/quality_gate_report.json`](/Users/stefen/tl_demand_forecasting/reports/quality_gate_report.json)
-
-Ces fichiers forment la trace de decision versionnee.
+- the model tracks the global demand shape well
+- there is a slight under-prediction bias
+- some peak periods remain harder than the average case
 
 ---
 
-## 9. Conception du replay pseudo-live
+## 8. Promotion and Model Governance
 
-### 9.1 Pourquoi le replay existe
+### 8.1 Promotion rules
 
-La source publique TLC est batch. Il serait trompeur de parler de "temps reel".
+A challenger is promoted only if it:
 
-Le replay permet de dire quelque chose de vrai:
+- beats the best baseline on the final holdout
+- satisfies `holdout_mase < 1`
+- beats the current champion on the same holdout
 
-> le systeme rejoue heure par heure une periode holdout historique, predit avec le modele champion, puis compare aux observations reelles de cette meme heure.
+### 8.2 MLflow states used
 
-### 9.2 Mecanisme
+The project uses:
 
-Le service:
+- experiment runs for tracking
+- registry versions for release state
+- aliases:
+  - `candidate`
+  - `champion`
 
-- charge le holdout
-- lit l'heure courante dans `replay_state`
-- isole toutes les lignes de cette heure
-- predit avec `models:/...@champion`
-- calcule `absolute_error`
-- ecrit le resultat dans `zone_predictions`
-- passe a l'heure suivante
+### 8.3 Decision artifacts
 
-### 9.3 Tables Postgres impliquees
+Release decisions are materialized into:
 
-`zone_predictions`
+- [`reports/run_summary.csv`](reports/run_summary.csv)
+- [`reports/best_run.json`](reports/best_run.json)
+- [`reports/promotion_decision.json`](reports/promotion_decision.json)
 
-- stocke predictions, actuals, erreur, version modele, alias
-
-`replay_state`
-
-- stocke le curseur de progression du replay
-
-### 9.4 Modes d'execution
-
-Deux modes pratiques:
-
-- un cycle unique via le timer systemd
-- un backfill complet via `--until-wrap --prune-window`
-
-Raison du prune:
-
-- eviter d'afficher des donnees de replay qui ne correspondent plus a la fenetre holdout courante
+These artifacts make the decision diffable and reviewable outside the MLflow UI.
 
 ---
 
-## 10. Dashboard et observabilite
+## 9. Pseudo-Live Replay Design
 
-### 10.1 Dashboard Grafana
+### 9.1 Why replay exists
 
-Les dashboards provisionnes automatiquement sont:
+The public TLC source is historical. There is no native production event stream in this project.
+
+Replay exists to:
+
+- simulate production-like writes
+- feed Grafana with something realistic
+- compare predictions and real observations on the same hidden window
+
+### 9.2 Mechanism
+
+The replay service:
+
+- loads the holdout
+- advances one hour at a time
+- loads the MLflow `champion`
+- writes predictions and actuals to PostgreSQL
+
+It can run:
+
+- on a schedule through `systemd`
+- manually for one cycle
+- in full backfill mode for the entire holdout
+
+### 9.3 PostgreSQL tables involved
+
+Main tables:
+
+- `zone_predictions`
+- `replay_state`
+
+`zone_predictions` stores:
+
+- prediction timestamp
+- target hour
+- zone metadata
+- `predicted_trips`
+- `actual_trips`
+- `absolute_error`
+- `model_version`
+- `model_alias`
+
+### 9.4 Execution modes
+
+Supported execution modes:
+
+- periodic timer-based replay
+- manual immediate replay
+- full-window backfill with stale-row pruning
+
+The stale-row pruning is important to avoid showing replay data that no longer belongs to the current holdout window.
+
+---
+
+## 10. Dashboard and Observability
+
+### 10.1 Grafana dashboards
+
+Business dashboard:
 
 - `TLC Demand Forecasting`
+
+Operations dashboard:
+
 - `TLC Operations`
 
-Le dashboard metier contient:
+Key business panels:
 
-- un `geomap`
-- une serie temporelle `predicted vs actual`
-- une table MAE
-- une stat MAE
+- `Predicted vs Actual`
+- `Demand Geomap`
+- `MAE for Selection`
 
-Le dashboard operations contient:
+Key operations panels:
 
-- la fraicheur du replay
-- la taille du dernier batch
-- la `MAE 24h`
-- la couverture par heure rejouee
-- l'etat du curseur `replay_state`
+- replay rows total
+- latest batch rows
+- freshness in minutes
+- 24h MAE
+- latest batch details
 
-### 10.2 Particularite temporelle
+### 10.2 Time anchoring
 
-Les requetes du dashboard sont ancrees sur `MAX(target_hour)` disponible dans `zone_predictions`.
+The business dashboard queries are anchored on `MAX(target_hour)` in `zone_predictions`, not on wall clock `NOW()`.
 
-Raison:
+This is critical because the replay is historical.
 
-- le replay porte sur une plage historique
-- si le dashboard etait ancre sur `NOW()`, il afficherait `No data`
+Without this design, the dashboard would show `No data` even when the replay data is correct.
 
-### 10.2.b Interpretation visuelle du panel principal
+### 10.2.b Visual interpretation of the main panel
 
-Dans `Predicted vs Actual`:
+`Predicted vs Actual` means:
 
-- l'axe du bas represente les heures rejouees
-- l'axe de gauche represente le nombre de trajets
-- avec `Zone = All`, Grafana peut afficher des valeurs abregees en milliers
+- x-axis = time
+- y-axis = trip volume
+- one series = `predicted_trips`
+- one series = `actual_trips`
 
-Exemples:
+If the selected zone becomes invalid for the current holdout window, the dashboard now falls back to `All` instead of returning an empty screen.
 
-- `1.25` sur l'axe vertical signifie environ `1250 trajets`
-- `2.75` signifie environ `2750 trajets`
+### 10.3 Alerts
 
-Si les labels de date visibles tombent surtout a `00:00`, cela ne veut pas dire que la prediction est journaliere. Les donnees restent bien horaires; c'est seulement l'etiquetage automatique de l'axe sur une fenetre longue.
-
-### 10.3 Alertes
-
-Alertes provisionnees:
+Current provisioned alerts:
 
 - `TLC Replay Freshness`
 - `TLC Replay Coverage`
 - `TLC Model MAE 24h`
 
-Seuils actuels:
+Intent:
 
-- fraicheur replay > 90 minutes
-- batch recent < 100 lignes
-- `MAE 24h > 12`
+- detect replay stalls
+- detect incomplete writes
+- detect performance drift
 
 ---
 
-## 11. Infrastructure AWS
+## 11. AWS Infrastructure
 
-### 11.1 Ressources creees
+### 11.1 Resources created
 
-Pour chaque environnement:
+Main resources:
 
-- 1 EC2 Ubuntu 24.04 `m6i.large`
+- 1 EC2 instance
 - 1 Elastic IP
-- 1 bucket S3 chiffre et versionne
-- 1 IAM role EC2
-- 1 instance profile
-- 1 security group
-- 1 role IAM OIDC GitHub optionnel
+- 1 S3 bucket
+- IAM role and instance profile
+- Security Group rules
+- optional GitHub OIDC integration
 
-### 11.2 Regles reseau
+### 11.2 Network rules
 
-Expose publiquement:
+Network principles:
 
-- `22/tcp` pour SSH depuis le CIDR admin
-- `3000/tcp` pour Grafana depuis le CIDR admin
+- Grafana is public on `:3000`
+- MLflow stays private on `localhost:5000`
+- PostgreSQL stays private on `localhost:5432`
+- SSH access is restricted by `allowed_cidr`
+- GitHub deploys open a temporary SSH rule for the runner IP only during deployment
 
-Non exposes publiquement:
+### 11.3 S3 storage
 
-- `5000/tcp` MLflow
-- `5432/tcp` PostgreSQL
-
-### 11.3 Stockage S3
-
-Buckets / prefixes utilises:
+S3 is used for:
 
 - `raw/`
 - `features/`
@@ -690,269 +660,260 @@ Buckets / prefixes utilises:
 - `mlflow-artifacts/`
 - `reports/`
 
-### 11.4 Choix de sizing
+### 11.4 Sizing choice
 
-Le sizing `m6i.large` a ete retenu car des tailles plus petites de type burstable devenaient lentes avec:
+The retained sizing is `m6i.large`.
 
-- PostgreSQL
-- MLflow
-- Grafana
-- replay service
+Reason:
 
-sur une seule machine.
+- smaller burstable instances such as `t3.small` became slow under the combined load of PostgreSQL, MLflow, Grafana, and replay
+- CPU credits were exhausted in practice, which degraded UI responsiveness and MLflow access
 
 ---
 
-## 12. Securite et secrets
+## 12. Security and Secrets
 
-### 12.1 Principes
+### 12.1 Principles
 
-- aucun credential AWS long dans GitHub
-- MLflow reste en `127.0.0.1`
-- Grafana a un mot de passe admin gere par secret
-- les fichiers sensibles locaux sont ignores du versioning
+Security principles:
 
-### 12.2 Secrets critiques
+- keep MLflow private
+- do not commit infrastructure secrets
+- use GitHub OIDC instead of static AWS keys for CD
+- rotate the Grafana admin password
 
-Secrets utilises:
+### 12.2 Critical secrets
 
-- `EC2_SSH_PRIVATE_KEY`
+Critical secrets include:
+
 - `MLFLOW_DB_PASSWORD`
 - `GRAFANA_ADMIN_PASSWORD`
+- `EC2_SSH_PRIVATE_KEY`
 
-### 12.3 Acces MLflow
+They belong in:
 
-MLflow est accessible via tunnel SSH:
+- local `.env`
+- GitHub Environment secrets
 
-```bash
-ssh -N -L 5000:127.0.0.1:5000 ubuntu@EC2_IP
-export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
+They do not belong in the repository.
+
+### 12.3 MLflow access
+
+MLflow is reached through an SSH tunnel:
+
+```text
+local 127.0.0.1:5000 -> SSH tunnel -> EC2 127.0.0.1:5000
 ```
 
-Raison:
-
-- pas d'exposition publique du serveur MLflow
-- surface d'attaque reduite
+This keeps the tracking server out of the public internet path.
 
 ### 12.4 GitHub OIDC
 
-GitHub Actions assume un role IAM AWS via OIDC.
+GitHub Actions uses AWS OIDC:
 
-Raison:
-
-- supprimer les AWS access keys statiques dans GitHub
-- garder un chemin de deploiement plus propre
+- no long-lived AWS access key in GitHub
+- short-lived credentials per workflow run
+- one shared GitHub -> AWS role managed through Terraform
 
 ---
 
-## 13. CI/CD et environnements
+## 13. CI/CD and Environments
 
-### 13.1 Environnements
+### 13.1 Environments
 
-Deux environnements logiques:
+The project maintains:
 
 - `staging`
 - `production`
 
-Chaque environnement a:
-
-- son `PROJECT_NAME`
-- son `TF_STATE_KEY`
-- ses secrets GitHub Environment
-- son infra separee
-
 ### 13.2 CI
 
-Le workflow `CI` valide:
+CI validates:
 
-- la compilation Python
-- les tests `pytest`
-- les quality gates
-- `terraform fmt` et `terraform validate`
-- la syntaxe des playbooks Ansible
+- Python syntax
+- tests
+- quality gates
+- Terraform formatting and validation
+- Ansible syntax
 
-### 13.3 CD staging
+### 13.3 Staging CD
 
-Declenchement:
+`staging`:
 
-- `push` vers `main`
+- deploys automatically on `push` to `main`
+- uses the reusable deployment workflow
+- provisions and configures the EC2 host end to end
 
-Role:
+### 13.4 Production CD
 
-- deployer automatiquement la stack d'integration
+`production`:
 
-### 13.4 CD production
+- deploys from immutable `prod-v*` tags
+- keeps `workflow_dispatch` as break-glass
+- uses the same reusable deployment logic with production variables
 
-Declenchement:
+### 13.5 Deployment logic
 
-- tag `prod-v*`
-- `workflow_dispatch` garde en break-glass
+The deployment flow is:
 
-Role:
-
-- deployer une release immutable de production
-
-### 13.5 Logique de deploy
-
-Le workflow reutilisable:
-
-1. assume le role AWS via OIDC
-2. lance Terraform
-3. recupere les outputs
-4. ouvre temporairement SSH pour l'IP du runner
-5. rend l'inventory Ansible
-6. applique les playbooks
-7. verifie les services
-8. referme la fenetre SSH
+1. GitHub OIDC into AWS
+2. Terraform apply
+3. temporary SSH rule for the runner IP
+4. Ansible provisioning and application deployment
+5. SSH rule cleanup
 
 ---
 
-## 14. Phases projet de bout en bout
+## 14. End-to-End Project Phases
 
-### Phase A. Provisionner l'infra
+### Phase A. Provision infrastructure
 
-Entree:
+Inputs:
 
-- variables Terraform
+- Terraform configuration
+- AWS credentials
 
-Sortie:
+Outputs:
 
-- EC2
-- S3
-- IAM
-- SG
-- EIP
+- EC2 instance
+- S3 bucket
+- IAM and networking
 
-### Phase B. Configurer la machine
+### Phase B. Configure the machine
 
-Entree:
+Inputs:
 
-- EC2 fraiche
-- secrets applicatifs
+- inventory
+- Ansible playbooks
+- secrets
 
-Sortie:
+Outputs:
 
-- PostgreSQL pret
-- MLflow pret
-- Grafana pret
-- replay timer pret
+- PostgreSQL
+- MLflow
+- Grafana
+- replay timer
 
-### Phase C. Ingerer et preparer les donnees
+### Phase C. Ingest and prepare data
 
-Entree:
+Inputs:
 
-- fichiers TLC publics
+- raw TLC files
+- lookup table
+- zone shapefile
 
-Sortie:
+Outputs:
 
-- `data/raw/*`
-- `data/processed/train_features.parquet`
-- `data/holdout/holdout_features.parquet`
+- raw data in S3 and local storage
+- processed features
+- train dataset
+- frozen holdout
 
-### Phase D. Entrainer et evaluer
+### Phase D. Train and evaluate
 
-Entree:
+Inputs:
 
 - train
 - holdout
 
-Sortie:
+Outputs:
 
-- runs MLflow
-- rapports d'evaluation
+- MLflow runs
+- report artifacts
+- best challenger identification
 
-### Phase E. Promouvoir
+### Phase E. Promote
 
-Entree:
+Inputs:
 
-- runs MLflow
-- champion courant
+- evaluation metrics
+- current champion state
 
-Sortie:
+Outputs:
 
-- alias `candidate`
-- alias `champion` eventuellement mis a jour
+- updated `candidate`
+- updated `champion` if gates pass
+- promotion decision artifact
 
-### Phase F. Rejouer et observer
+### Phase F. Replay and observe
 
-Entree:
+Inputs:
 
 - holdout
-- modele champion
+- champion model
 
-Sortie:
+Outputs:
 
-- `zone_predictions`
-- dashboard Grafana
-- alertes exploitation
-
----
-
-## 15. Critere de succes
-
-Le projet est considere reussi si:
-
-1. l'infra peut etre recreee sans etapes manuelles cachees
-2. les donnees TLC peuvent etre re-ingerees
-3. le pipeline produit train + holdout valides
-4. au moins une baseline et deux challengers sont compares
-5. le champion est promu selon des gates explicites
-6. le replay alimente automatiquement PostgreSQL
-7. Grafana affiche predictions, actuals et erreur
-8. la CI et le CD passent sur `staging` et `production`
+- PostgreSQL replay rows
+- Grafana visualizations
+- operational alerts
 
 ---
 
-## 16. Limites et risques assumes
+## 15. Success Criteria
 
-### Limites
+The project is successful if:
 
-- pas de vraie source online
-- pas d'orchestrateur de jobs externe
-- pas de serving HTTP temps reel
-- pas de rollback multi-version automatise au-dela des aliases MLflow
-
-### Risques
-
-- la couverture geographique depend de la presence des centroides
-- une seule EC2 concentre plusieurs roles applicatifs
-- la qualite des predictions depend de la periode TLC choisie
-
-### Positionnement honnete
-
-Ce projet n'est pas une plateforme data entreprise complete.
-
-En revanche, c'est une implementation propre et defendable d'une chaine MLOps compacte, avec des decisions techniques explicites et une vraie observabilite metier.
+1. infrastructure can be deployed from code
+2. the pipeline produces valid train and holdout datasets
+3. multiple models are compared against explicit baselines
+4. promotion is blocked when gates fail
+5. the replay writes predictions plus actuals into PostgreSQL
+6. Grafana displays business and operational views
+7. CI/CD works for `staging` and `production`
 
 ---
 
-## 17. Etat actuel du repository
+## 16. Known Limits and Accepted Risks
 
-Le repository actuel implemente effectivement:
+### Limits
 
-- Terraform en `ca-central-1`
-- Ansible pour PostgreSQL, MLflow, Grafana et replay
-- quality gates versionnees
-- CI GitHub Actions
-- CD `staging` et `production`
-- OIDC GitHub vers AWS
-- rotation du mot de passe Grafana par secret
-- dashboard et alertes Grafana provisionnes
+- no true online data source
+- no external model serving API
+- no Kubernetes
+- no dedicated feature store
+- no enterprise-scale orchestration layer
 
-Le modele champion documente au moment de cette version du PRD est:
+### Risks
 
-- `lightgbm`
+- public Grafana still requires careful credential hygiene
+- a single EC2 host keeps the architecture simple but not highly available
+- holdout-based replay is realistic for monitoring, but not a replacement for true future live inference
+
+### Honest positioning
+
+This is a strong portfolio and interview-grade MLOps system.
+
+It is not pretending to be:
+
+- a high-scale production platform
+- a multi-team enterprise platform
+- a real-time low-latency serving stack
+
+---
+
+## 17. Current Repository State
+
+The current repository state includes:
+
+- AWS deployment in `ca-central-1`
+- `staging` and `production` workflows
+- GitHub OIDC to AWS
+- Grafana admin password rotation through secrets
+- provisioned dashboards and alert rules
+- `6` months of ingested data from `January` through `June 2024`
+- `lightgbm` documented as the current champion
 - registry version `4`
-- approuve par les quality gates
+- replay aligned on the `June 24 -> June 30, 2024` holdout
 
 ---
 
-## 18. Appendice: role des notebooks Databricks
+## 18. Appendix: Role of the Databricks Notebooks
 
-Les notebooks dans [`databricks/`](/Users/stefen/tl_demand_forecasting/databricks) sont gardes pour:
+The notebooks under [`databricks/`](databricks/) are kept for:
 
 - EDA
-- prototypage
-- demo notebook
+- quick feature prototyping
+- demo-oriented notebook workflows
 
-Ils ne remplacent pas les scripts de reference du projet et ne doivent pas etre consideres comme la source de verite du pipeline.
+They are not part of the critical deployment path.
