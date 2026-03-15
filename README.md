@@ -118,6 +118,25 @@ make ansible-syntax
 
 La meme logique est versionnee dans [`.github/workflows/ci.yml`](/Users/stefen/tl_demand_forecasting/.github/workflows/ci.yml).
 
+## GitHub CD
+
+Le deploiement production est pilote par OIDC GitHub -> AWS dans [`.github/workflows/deploy.yml`](/Users/stefen/tl_demand_forecasting/.github/workflows/deploy.yml).
+
+Pre-requis GitHub:
+
+- un environnement GitHub `production`
+- une variable `AWS_DEPLOY_ROLE_ARN`
+- des variables `AWS_REGION`, `PROJECT_NAME`, `EC2_INSTANCE_TYPE`, `ADMIN_ALLOWED_CIDR`, `EC2_KEY_PAIR_NAME`
+- des secrets `EC2_SSH_PRIVATE_KEY` et `MLFLOW_DB_PASSWORD`
+
+Le workflow:
+
+- assume un role AWS court-terme via OIDC
+- fait `terraform init/plan/apply`
+- ouvre temporairement SSH pour l'IP du runner GitHub
+- rejoue `ansible/playbooks/site.yml`
+- referme la regle SSH temporaire en fin de job
+
 ### 8. Verifier Grafana et le replay timer
 
 ```bash

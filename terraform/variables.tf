@@ -30,3 +30,21 @@ variable "ssh_private_key_path" {
   description = "Chemin local vers la cle privee utilisee par Ansible"
   type        = string
 }
+
+variable "enable_github_actions_oidc" {
+  description = "Active le role IAM assume par GitHub Actions via OIDC"
+  type        = bool
+  default     = false
+}
+
+variable "github_repository" {
+  description = "Repository GitHub autorise a assumer le role OIDC, format owner/repo"
+  type        = string
+  default     = ""
+}
+
+variable "github_environment" {
+  description = "Nom de l'environnement GitHub protege pour le deploiement"
+  type        = string
+  default     = "production"
+}

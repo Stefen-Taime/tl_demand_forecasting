@@ -35,6 +35,9 @@ Puis remplir dans `terraform/terraform.tfvars`:
 - `allowed_cidr`
 - `key_pair_name`
 - `ssh_private_key_path`
+- `enable_github_actions_oidc = true` si tu veux le CD GitHub
+- `github_repository = "owner/repo"`
+- `github_environment = "production"`
 
 ## 3. Provisionner AWS
 
@@ -251,3 +254,23 @@ Mais le deploiement principal n'en depend pas.
 ```bash
 terraform -chdir=terraform destroy -var-file=terraform.tfvars
 ```
+
+## 16. GitHub CD via OIDC
+
+Le workflow de deploiement est [`.github/workflows/deploy.yml`](/Users/stefen/tl_demand_forecasting/.github/workflows/deploy.yml).
+
+Variables GitHub Environment `production` a definir:
+
+- `AWS_DEPLOY_ROLE_ARN`
+- `AWS_REGION`
+- `PROJECT_NAME`
+- `EC2_INSTANCE_TYPE`
+- `ADMIN_ALLOWED_CIDR`
+- `EC2_KEY_PAIR_NAME`
+
+Secrets GitHub Environment `production` a definir:
+
+- `EC2_SSH_PRIVATE_KEY`
+- `MLFLOW_DB_PASSWORD`
+
+Le workflow utilise `OIDC` pour AWS, puis ouvre une regle SSH temporaire uniquement pour l'IP du runner GitHub pendant le deploiement.

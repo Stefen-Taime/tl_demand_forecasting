@@ -2,6 +2,8 @@ provider "aws" {
   region = var.aws_region
 }
 
+data "aws_caller_identity" "current" {}
+
 data "aws_vpc" "default" {
   default = true
 }
@@ -30,6 +32,11 @@ data "aws_ami" "ubuntu" {
 
 resource "random_id" "bucket_suffix" {
   byte_length = 4
+}
+
+locals {
+  github_actions_oidc_enabled = var.enable_github_actions_oidc && trimspace(var.github_repository) != ""
+  github_actions_subject      = "repo:${var.github_repository}:environment:${var.github_environment}"
 }
 
 resource "aws_s3_bucket" "mlops" {
@@ -86,6 +93,129 @@ resource "aws_iam_role" "ec2_mlops" {
         Service = "ec2.amazonaws.com"
       }
     }]
+  })
+}
+
+resource "aws_iam_openid_connect_provider" "github_actions" {
+  count = local.github_actions_oidc_enabled ? 1 : 0
+
+  url = "https://token.actions.githubusercontent.com"
+  client_id_list = [
+    "sts.amazonaws.com"
+  ]
+  # AWS ignores the thumbprint for GitHub's OIDC endpoint, but Terraform still requires a value.
+  thumbprint_list = [
+    "ffffffffffffffffffffffffffffffffffffffff"
+  ]
+}
+
+resource "aws_iam_role" "github_actions_deployer" {
+  count = local.github_actions_oidc_enabled ? 1 : 0
+
+  name = "${var.project_name}-github-actions-deployer"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = "sts:AssumeRoleWithWebIdentity"
+      Principal = {
+        Federated = aws_iam_openid_connect_provider.github_actions[0].arn
+      }
+      Condition = {
+        StringEquals = {
+          "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+          "token.actions.githubusercontent.com:sub" = local.github_actions_subject
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "github_actions_deployer" {
+  count = local.github_actions_oidc_enabled ? 1 : 0
+
+  name = "${var.project_name}-github-actions-deployer-policy"
+  role = aws_iam_role.github_actions_deployer[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ec2:AllocateAddress",
+          "ec2:AssociateAddress",
+          "ec2:AuthorizeSecurityGroupIngress",
+          "ec2:CreateSecurityGroup",
+          "ec2:CreateTags",
+          "ec2:DeleteSecurityGroup",
+          "ec2:DeleteTags",
+          "ec2:Describe*",
+          "ec2:DisassociateAddress",
+          "ec2:ModifyInstanceAttribute",
+          "ec2:ReleaseAddress",
+          "ec2:RevokeSecurityGroupIngress",
+          "ec2:RunInstances",
+          "ec2:StartInstances",
+          "ec2:StopInstances",
+          "ec2:TerminateInstances"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:CreateBucket",
+          "s3:DeleteBucket",
+          "s3:DeleteObject",
+          "s3:GetBucketLocation",
+          "s3:GetBucketVersioning",
+          "s3:GetEncryptionConfiguration",
+          "s3:GetObject",
+          "s3:ListAllMyBuckets",
+          "s3:ListBucket",
+          "s3:PutBucketPublicAccessBlock",
+          "s3:PutBucketVersioning",
+          "s3:PutEncryptionConfiguration",
+          "s3:PutObject"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "iam:AddRoleToInstanceProfile",
+          "iam:CreateInstanceProfile",
+          "iam:CreateOpenIDConnectProvider",
+          "iam:CreateRole",
+          "iam:DeleteInstanceProfile",
+          "iam:DeleteOpenIDConnectProvider",
+          "iam:DeleteRole",
+          "iam:DeleteRolePolicy",
+          "iam:GetInstanceProfile",
+          "iam:GetOpenIDConnectProvider",
+          "iam:GetRole",
+          "iam:ListInstanceProfilesForRole",
+          "iam:ListOpenIDConnectProviders",
+          "iam:PassRole",
+          "iam:PutRolePolicy",
+          "iam:RemoveRoleFromInstanceProfile",
+          "iam:TagOpenIDConnectProvider",
+          "iam:TagRole",
+          "iam:UntagOpenIDConnectProvider",
+          "iam:UntagRole"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "sts:GetCallerIdentity"
+        ]
+        Resource = "*"
+      }
+    ]
   })
 }
 
