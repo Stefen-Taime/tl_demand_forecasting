@@ -337,20 +337,23 @@ A la date du `15 mars 2026`, le repository et la prod s'appuient sur:
 - `yellow_tripdata_2024-01.parquet`
 - `yellow_tripdata_2024-02.parquet`
 - `yellow_tripdata_2024-03.parquet`
+- `yellow_tripdata_2024-04.parquet`
+- `yellow_tripdata_2024-05.parquet`
+- `yellow_tripdata_2024-06.parquet`
 
 Le dataset complet couvre:
 
-- `1 janvier 2024 00:00:00` -> `31 mars 2024 23:00:00`
+- `1 janvier 2024 00:00:00` -> `30 juin 2024 23:00:00`
 
 Le split reel est:
 
-- `train`: `1 janvier 2024 00:00:00` -> `24 mars 2024 23:00:00`
-- `holdout`: `25 mars 2024 00:00:00` -> `31 mars 2024 23:00:00`
+- `train`: `1 janvier 2024 00:00:00` -> `23 juin 2024 23:00:00`
+- `holdout`: `24 juin 2024 00:00:00` -> `30 juin 2024 23:00:00`
 
 Donc:
 
-- l'entrainement se fait sur `1 janvier -> 24 mars`
-- l'evaluation finale et le replay portent sur `25 mars -> 31 mars`
+- l'entrainement se fait sur `1 janvier -> 23 juin`
+- l'evaluation finale et le replay portent sur `24 juin -> 30 juin`
 
 ---
 
@@ -474,12 +477,12 @@ Les quality gates versionnees imposent:
 
 Snapshot courant des rapports:
 
-- champion: `xgboost`
-- `holdout_mae = 6.6507`
-- `holdout_rmse = 14.9722`
-- `holdout_mase = 0.3878`
-- gain vs meilleure baseline: `+47.82%`
-- version registry approuvee: `3`
+- champion: `lightgbm`
+- `holdout_mae = 6.4256`
+- `holdout_rmse = 14.3644`
+- `holdout_mase = 0.4161`
+- gain vs meilleure baseline: `+46.34%`
+- version registry approuvee: `4`
 
 Interpretation:
 
@@ -489,18 +492,19 @@ Interpretation:
 
 Sanity-check production au `15 mars 2026`:
 
-- lignes evaluees: `20255`
-- moyenne `predicted_trips`: `39.80`
-- moyenne `actual_trips`: `39.05`
-- biais moyen: `+0.75`
-- total predit: `806246`
-- total reel: `791020`
-- correlation `predicted vs actual`: `0.9797`
+- lignes evaluees: `20574`
+- fenetre rejouee: `2024-06-24 00:00:00` -> `2024-06-30 23:00:00`
+- moyenne `predicted_trips`: `39.27`
+- moyenne `actual_trips`: `39.38`
+- biais moyen: `-0.11`
+- total predit: `807883`
+- total reel: `810193`
+- correlation `predicted vs actual`: `0.9817`
 
 Lecture de ce sanity-check:
 
 - le modele suit bien la dynamique globale
-- il y a une legere sur-prediction
+- il y a une legere sous-prediction
 - certaines journees et certaines heures de pointe restent plus dures a bien predire
 
 ---
@@ -937,8 +941,8 @@ Le repository actuel implemente effectivement:
 
 Le modele champion documente au moment de cette version du PRD est:
 
-- `xgboost`
-- registry version `3`
+- `lightgbm`
+- registry version `4`
 - approuve par les quality gates
 
 ---

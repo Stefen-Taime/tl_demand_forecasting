@@ -1,17 +1,22 @@
 {
-  "run_id": "cef51ebd1edd4521b971a523a67f7368",
-  "run_name": "xgboost",
-  "model_type": "xgboost",
-  "cv_mae_mean": 6.7721061526439605,
-  "cv_mae_std": 0.24287834005133255,
-  "cv_mase_mean": 0.37899445391988235,
-  "holdout_mae": 6.650680278506111,
-  "holdout_rmse": 14.972201332700628,
-  "holdout_mase": 0.38777389794225064,
-  "holdout_mae_improvement_vs_best_baseline_pct": 0.47820981283063246,
-  "reference_baseline_holdout_mae": 13.639792643791656,
-  "best_baseline_holdout_mae": 12.745889903727475,
+  "run_id": "cf98b1f1d84f4e1bb286eaa23244a601",
+  "run_name": "lightgbm",
+  "model_type": "lightgbm",
+  "cv_mae_mean": 6.31771013178159,
+  "cv_mae_std": 0.37041189695639576,
+  "cv_mase_mean": 0.40301181072628794,
+  "holdout_mae": 6.425623184368077,
+  "holdout_rmse": 14.364370526747914,
+  "holdout_mase": 0.41612264882082317,
+  "holdout_mae_improvement_vs_best_baseline_pct": 0.4633598212487616,
+  "reference_baseline_holdout_mae": 13.14649557694177,
+  "best_baseline_holdout_mae": 11.973801885875377,
   "baselines": [
+    {
+      "run_name": "seasonal_naive_24h",
+      "holdout_mae": 11.973801885875377,
+      "holdout_mase": 0.775422089693583
+    },
     {
       "run_name": "seasonal_naive_24h",
       "holdout_mae": 12.745889903727475,
@@ -19,8 +24,18 @@
     },
     {
       "run_name": "seasonal_naive_168h",
+      "holdout_mae": 13.14649557694177,
+      "holdout_mase": 0.8513656038058265
+    },
+    {
+      "run_name": "seasonal_naive_168h",
       "holdout_mae": 13.639792643791656,
       "holdout_mase": 0.7952803832264791
+    },
+    {
+      "run_name": "rolling_mean_24h",
+      "holdout_mae": 22.625988302388127,
+      "holdout_mase": 1.4652565073351147
     },
     {
       "run_name": "rolling_mean_24h",

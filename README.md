@@ -174,22 +174,25 @@ Pourquoi cette phase existe:
 
 ### Fenetre de donnees actuellement utilisee
 
-Au moment actuel du projet, les fichiers ingeres couvrent `3 mois` de `yellow taxi`:
+Au moment actuel du projet, les fichiers ingeres couvrent `6 mois` de `yellow taxi`:
 
 - `janvier 2024`
 - `fevrier 2024`
 - `mars 2024`
+- `avril 2024`
+- `mai 2024`
+- `juin 2024`
 
 Le dataset construit couvre:
 
-- `features` complets: du `1 janvier 2024 00:00:00` au `31 mars 2024 23:00:00`
-- `train`: du `1 janvier 2024 00:00:00` au `24 mars 2024 23:00:00`
-- `holdout`: du `25 mars 2024 00:00:00` au `31 mars 2024 23:00:00`
+- `features` complets: du `1 janvier 2024 00:00:00` au `30 juin 2024 23:00:00`
+- `train`: du `1 janvier 2024 00:00:00` au `23 juin 2024 23:00:00`
+- `holdout`: du `24 juin 2024 00:00:00` au `30 juin 2024 23:00:00`
 
 Autrement dit:
 
-- le modele apprend sur `1 janvier -> 24 mars`
-- il est ensuite evalue sur une semaine cachee `25 mars -> 31 mars`
+- le modele apprend sur `1 janvier -> 23 juin`
+- il est ensuite evalue sur une semaine cachee `24 juin -> 30 juin`
 - cette meme semaine sert ensuite au replay pseudo-live dans Grafana
 
 ### Phase 4. Entrainement des challengers
@@ -321,8 +324,8 @@ Autrement dit, on ne predit pas des trajets individuels. On predit un volume agr
 
 Exemple:
 
-- `2024-03-25 08:00:00`, zone `JFK Airport` -> le modele predit un nombre attendu de trajets pour cette heure
-- `2024-03-25 18:00:00`, zone `Penn Station/Madison Sq West` -> autre prediction, toujours sur une heure precise
+- `2024-06-24 08:00:00`, zone `JFK Airport` -> le modele predit un nombre attendu de trajets pour cette heure
+- `2024-06-28 18:00:00`, zone `Penn Station/Madison Sq West` -> autre prediction, toujours sur une heure precise
 
 La signification des colonnes dans PostgreSQL et Grafana est:
 
@@ -455,17 +458,18 @@ Pourquoi `MASE` est importante:
 
 Snapshot actuel issu de [`best_run.json`](/Users/stefen/tl_demand_forecasting/reports/best_run.json):
 
-- modele: `xgboost`
-- `holdout_mae = 6.6507`
-- `holdout_rmse = 14.9722`
-- `holdout_mase = 0.3878`
-- gain vs meilleure baseline holdout: `+47.82%`
+- modele: `lightgbm`
+- `holdout_mae = 6.4256`
+- `holdout_rmse = 14.3644`
+- `holdout_mase = 0.4161`
+- gain vs meilleure baseline holdout: `+46.34%`
+- version registry courante: `4`
 
 Comparaison rapide:
 
-- `xgboost` holdout MAE: `6.6507`
-- `lightgbm` holdout MAE: `6.6695`
-- meilleure baseline holdout MAE: `12.7459`
+- `lightgbm` holdout MAE: `6.4256`
+- `xgboost` holdout MAE: `6.4413`
+- meilleure baseline holdout MAE: `11.9738`
 
 Interpretation:
 
@@ -475,19 +479,20 @@ Interpretation:
 
 Sanity-check sur la prod au `15 mars 2026`:
 
-- `20255` lignes de replay evaluees
-- moyenne `predicted_trips`: `39.80`
-- moyenne `actual_trips`: `39.05`
-- biais moyen: `+0.75`
-- total predit: `806246`
-- total reel: `791020`
-- correlation `predicted vs actual`: `0.9797`
+- `20574` lignes de replay evaluees
+- fenetre rejouee: `2024-06-24 00:00:00` -> `2024-06-30 23:00:00`
+- moyenne `predicted_trips`: `39.27`
+- moyenne `actual_trips`: `39.38`
+- biais moyen: `-0.11`
+- total predit: `807883`
+- total reel: `810193`
+- correlation `predicted vs actual`: `0.9817`
 
 Interpretation de ce sanity-check:
 
 - les predictions suivent tres bien la forme globale de la demande
-- le modele a une legere tendance a sur-predire
-- les ecarts sont plus visibles sur certains pics de fin de journee, mais l'ensemble reste coherent
+- le modele a maintenant une legere tendance a sous-predire
+- les ecarts restent surtout visibles sur certains pics, mais l'ensemble reste coherent
 
 ## 6. Comment le systeme decide si un modele est acceptable
 
