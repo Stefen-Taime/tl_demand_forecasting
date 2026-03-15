@@ -170,6 +170,7 @@ resource "aws_iam_role_policy" "github_actions_deployer" {
           "s3:DeleteBucketPolicy",
           "s3:DeleteBucket",
           "s3:DeleteObject",
+          "s3:GetBucketAcl",
           "s3:GetBucketPublicAccessBlock",
           "s3:GetBucketPolicy",
           "s3:GetBucketTagging",
