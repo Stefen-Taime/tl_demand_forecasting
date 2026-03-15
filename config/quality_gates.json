@@ -1,0 +1,13 @@
+{
+  "allowed_model_types": [
+    "lightgbm",
+    "xgboost"
+  ],
+  "max_holdout_mae": 8.0,
+  "max_holdout_mase": 1.0,
+  "max_cv_mae_std": 1.0,
+  "min_holdout_improvement_vs_best_baseline_pct": 0.1,
+  "min_baseline_count": 3,
+  "require_approved_promotion": true,
+  "require_all_promotion_gates": true
+}

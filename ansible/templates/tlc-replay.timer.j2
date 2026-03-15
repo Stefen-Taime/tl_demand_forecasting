@@ -1,0 +1,10 @@
+[Unit]
+Description=Run TLC replay cycle hourly
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+Unit=tlc-replay.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,208 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: TLC Replay Operations
+    folder: TLC Operations
+    interval: {{ grafana_alert_group_interval }}
+    rules:
+      - uid: tlc-replay-freshness
+        title: TLC Replay Freshness
+        condition: B
+        data:
+          - refId: A
+            datasourceUid: PREDICTIONS_DS
+            relativeTimeRange:
+              from: 600
+              to: 0
+            model:
+              datasource:
+                type: postgres
+                uid: PREDICTIONS_DS
+              editorMode: code
+              format: time_series
+              intervalMs: 1000
+              maxDataPoints: 43200
+              rawQuery: true
+              rawSql: >-
+                SELECT NOW() AS time,
+                       COALESCE(EXTRACT(EPOCH FROM (NOW() - MAX(generated_at))) / 60.0, 999999.0) AS freshness_minutes
+                FROM zone_predictions
+                WHERE replay_mode = TRUE
+                  AND model_alias = '{{ replay_model_alias }}';
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            relativeTimeRange:
+              from: 600
+              to: 0
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - {{ grafana_replay_freshness_threshold_minutes }}
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - A
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: B
+              type: classic_conditions
+        noDataState: Alerting
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: Replay timer stale
+          description: >-
+            No new replay batch has reached PostgreSQL for more than
+            {{ grafana_replay_freshness_threshold_minutes }} minutes.
+        labels:
+          severity: warning
+          service: tlc-replay
+
+      - uid: tlc-replay-coverage
+        title: TLC Replay Coverage
+        condition: B
+        data:
+          - refId: A
+            datasourceUid: PREDICTIONS_DS
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            model:
+              datasource:
+                type: postgres
+                uid: PREDICTIONS_DS
+              editorMode: code
+              format: time_series
+              intervalMs: 1000
+              maxDataPoints: 43200
+              rawQuery: true
+              rawSql: >-
+                WITH latest_batch AS (
+                  SELECT MAX(generated_at) AS max_generated_at
+                  FROM zone_predictions
+                  WHERE replay_mode = TRUE
+                    AND model_alias = '{{ replay_model_alias }}'
+                )
+                SELECT NOW() AS time,
+                       COUNT(*)::double precision AS rows_written
+                FROM zone_predictions zp
+                CROSS JOIN latest_batch lb
+                WHERE zp.replay_mode = TRUE
+                  AND zp.model_alias = '{{ replay_model_alias }}'
+                  AND lb.max_generated_at IS NOT NULL
+                  AND zp.generated_at >= lb.max_generated_at - INTERVAL '1 minute';
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - {{ grafana_latest_batch_min_rows }}
+                    type: lt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - A
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: B
+              type: classic_conditions
+        noDataState: Alerting
+        execErrState: Error
+        for: 15m
+        annotations:
+          summary: Replay batch missing zones
+          description: >-
+            The latest replay batch contains fewer than {{ grafana_latest_batch_min_rows }}
+            rows for alias {{ replay_model_alias }}.
+        labels:
+          severity: critical
+          service: tlc-replay
+
+      - uid: tlc-model-mae-24h
+        title: TLC Model MAE 24h
+        condition: B
+        data:
+          - refId: A
+            datasourceUid: PREDICTIONS_DS
+            relativeTimeRange:
+              from: 86400
+              to: 0
+            model:
+              datasource:
+                type: postgres
+                uid: PREDICTIONS_DS
+              editorMode: code
+              format: time_series
+              intervalMs: 1000
+              maxDataPoints: 43200
+              rawQuery: true
+              rawSql: >-
+                SELECT NOW() AS time,
+                       COALESCE(AVG(absolute_error), 0)::double precision AS mae_24h
+                FROM zone_predictions
+                WHERE replay_mode = TRUE
+                  AND model_alias = '{{ replay_model_alias }}'
+                  AND generated_at >= NOW() - INTERVAL '24 hours';
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            relativeTimeRange:
+              from: 86400
+              to: 0
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - {{ grafana_mae_24h_threshold }}
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - A
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: B
+              type: classic_conditions
+        noDataState: Alerting
+        execErrState: Error
+        for: 15m
+        annotations:
+          summary: Replay MAE drift
+          description: >-
+            The average replay MAE over the last 24 hours exceeds {{ grafana_mae_24h_threshold }}.
+        labels:
+          severity: warning
+          service: tlc-model

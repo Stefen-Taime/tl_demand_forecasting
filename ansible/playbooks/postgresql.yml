@@ -1,0 +1,71 @@
+---
+- name: Configure PostgreSQL
+  hosts: mlops_server
+  become: true
+
+  tasks:
+    - name: Ensure PostgreSQL service is enabled
+      ansible.builtin.systemd:
+        name: postgresql
+        state: started
+        enabled: true
+
+    - name: Check whether mlflow PostgreSQL user exists
+      ansible.builtin.command:
+        cmd: sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='mlflow'"
+      register: mlflow_user_check
+      changed_when: false
+
+    - name: Create mlflow PostgreSQL user if missing
+      ansible.builtin.command:
+        cmd: sudo -u postgres psql -c "CREATE USER mlflow WITH PASSWORD '{{ mlflow_db_password }}';"
+      when: mlflow_user_check.stdout.strip() != "1"
+
+    - name: Ensure mlflow PostgreSQL user password is current
+      ansible.builtin.command:
+        cmd: sudo -u postgres psql -c "ALTER USER mlflow WITH PASSWORD '{{ mlflow_db_password }}';"
+
+    - name: Check whether mlflow database exists
+      ansible.builtin.command:
+        cmd: sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='mlflow'"
+      register: mlflow_db_check
+      changed_when: false
+
+    - name: Create mlflow database if missing
+      ansible.builtin.command:
+        cmd: sudo -u postgres createdb -O mlflow mlflow
+      when: mlflow_db_check.stdout.strip() != "1"
+
+    - name: Check whether predictions database exists
+      ansible.builtin.command:
+        cmd: sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='predictions'"
+      register: predictions_db_check
+      changed_when: false
+
+    - name: Create predictions database if missing
+      ansible.builtin.command:
+        cmd: sudo -u postgres createdb -O mlflow predictions
+      when: predictions_db_check.stdout.strip() != "1"
+
+    - name: Copy schema SQL
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../prediction_service/sql/schema.sql"
+        dest: "{{ sql_root }}/schema.sql"
+        mode: "0644"
+
+    - name: Apply predictions schema
+      ansible.builtin.command:
+        cmd: sudo -u postgres psql -d predictions -f {{ sql_root }}/schema.sql
+      register: schema_apply
+      changed_when: "'CREATE' in schema_apply.stdout or 'ALTER' in schema_apply.stdout or 'INSERT' in schema_apply.stdout"
+
+    - name: Grant ownership and privileges on predictions schema objects
+      ansible.builtin.command:
+        cmd: >
+          sudo -u postgres psql -d predictions -c
+          "ALTER TABLE IF EXISTS zone_predictions OWNER TO mlflow;
+          ALTER TABLE IF EXISTS replay_state OWNER TO mlflow;
+          GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO mlflow;
+          GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO mlflow;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO mlflow;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON SEQUENCES TO mlflow;"

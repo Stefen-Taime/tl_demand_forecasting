@@ -1,0 +1,22 @@
+[Unit]
+Description=MLflow Tracking Server
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory={{ app_root }}
+EnvironmentFile={{ env_root }}/mlflow.env
+Environment=PATH={{ venv_path }}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart={{ venv_path }}/bin/mlflow server \
+  --host 127.0.0.1 \
+  --port {{ mlflow_port }} \
+  --backend-store-uri ${BACKEND_STORE_URI} \
+  --artifacts-destination ${MLFLOW_ARTIFACTS_DESTINATION}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

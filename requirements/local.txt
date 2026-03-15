@@ -1,0 +1,17 @@
+ansible-core
+boto3
+duckdb
+lightgbm
+mlflow
+numpy
+pandas
+psycopg2-binary
+pyarrow
+pyproj
+pyshp
+pytest
+requests
+scikit-learn
+shapely
+sqlalchemy
+xgboost

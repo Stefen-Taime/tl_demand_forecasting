@@ -1,0 +1,31 @@
+project_name: tlc-mlops
+app_root: /opt/tlc-mlops
+venv_path: /opt/tlc-mlops/.venv
+sql_root: /opt/tlc-mlops/sql
+service_root: /opt/tlc-mlops/prediction_service
+env_root: /etc/tlc-mlops
+
+mlflow_port: 5000
+grafana_port: 3000
+postgres_port: 5432
+replay_model_name: tlc-demand-forecasting
+replay_model_alias: champion
+grafana_alert_group_interval: 5m
+grafana_replay_freshness_threshold_minutes: 90
+grafana_latest_batch_min_rows: 100
+grafana_mae_24h_threshold: 12.0
+
+ec2_python_packages:
+  - pip
+  - setuptools
+  - wheel
+  - mlflow
+  - boto3
+  - duckdb
+  - lightgbm
+  - numpy
+  - pandas
+  - psycopg2-binary
+  - pyarrow
+  - scikit-learn
+  - xgboost

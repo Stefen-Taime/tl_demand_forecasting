@@ -1,0 +1,60 @@
+---
+- name: Configure MLflow
+  hosts: mlops_server
+  become: true
+
+  tasks:
+    - name: Create application virtualenv
+      ansible.builtin.pip:
+        name: "{{ ec2_python_packages }}"
+        virtualenv: "{{ venv_path }}"
+        virtualenv_command: python3 -m venv
+        state: present
+
+    - name: Write MLflow environment file
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/mlflow.env.j2"
+        dest: "{{ env_root }}/mlflow.env"
+        mode: "0600"
+
+    - name: Deploy MLflow systemd unit
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/mlflow.service.j2"
+        dest: /etc/systemd/system/mlflow.service
+        mode: "0644"
+      notify: Restart MLflow
+
+    - name: Count existing MLflow tables
+      ansible.builtin.command:
+        cmd: sudo -u postgres psql -d mlflow -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';"
+      register: mlflow_table_count
+      changed_when: false
+
+    - name: Run MLflow database migrations on existing schema
+      ansible.builtin.command:
+        cmd: >
+          {{ venv_path }}/bin/mlflow db upgrade
+          postgresql+psycopg2://mlflow:{{ mlflow_db_password }}@localhost/mlflow
+      register: mlflow_db_upgrade
+      when: (mlflow_table_count.stdout | trim | int) > 0
+      changed_when: "'done' in mlflow_db_upgrade.stdout | lower or 'migrate' in mlflow_db_upgrade.stdout | lower"
+
+    - name: Enable MLflow service
+      ansible.builtin.systemd:
+        name: mlflow
+        state: started
+        enabled: true
+        daemon_reload: true
+
+    - name: Wait for MLflow socket on localhost
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: "{{ mlflow_port }}"
+        timeout: 30
+
+  handlers:
+    - name: Restart MLflow
+      ansible.builtin.systemd:
+        name: mlflow
+        state: restarted
+        daemon_reload: true

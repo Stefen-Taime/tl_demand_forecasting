@@ -1,0 +1,10 @@
+boto3
+duckdb
+lightgbm
+mlflow
+numpy
+pandas
+psycopg2-binary
+pyarrow
+scikit-learn
+xgboost

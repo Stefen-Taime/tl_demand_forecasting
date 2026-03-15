@@ -1,0 +1,15 @@
+[Unit]
+Description=TLC replay cycle
+After=network.target postgresql.service mlflow.service
+Wants=postgresql.service mlflow.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory={{ service_root }}
+EnvironmentFile={{ env_root }}/replay.env
+ExecStart={{ venv_path }}/bin/python {{ service_root }}/run_replay_cycle.py
+
+[Install]
+WantedBy=multi-user.target

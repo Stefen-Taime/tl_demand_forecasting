@@ -1,0 +1,6 @@
+aws_region           = "ca-central-1"
+project_name         = "tlc-mlops"
+instance_type        = "m6i.large"
+allowed_cidr         = "X.X.X.X/32"
+key_pair_name        = "my-aws-key"
+ssh_private_key_path = "~/.ssh/my-aws-key.pem"

@@ -1,0 +1,43 @@
+---
+- name: Base setup
+  hosts: mlops_server
+  become: true
+
+  tasks:
+    - name: Refresh apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install base packages
+      ansible.builtin.apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gpg
+          - git
+          - jq
+          - postgresql
+          - postgresql-contrib
+          - python3
+          - python3-pip
+          - python3-psycopg2
+          - python3-venv
+          - unzip
+        state: present
+
+    - name: Create application directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - "{{ app_root }}"
+        - "{{ env_root }}"
+        - "{{ sql_root }}"
+
+- import_playbook: postgresql.yml
+- import_playbook: mlflow.yml
+- import_playbook: grafana.yml
+- import_playbook: prediction_timer.yml

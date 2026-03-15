@@ -1,0 +1,72 @@
+{
+  "passed": true,
+  "model_type": "xgboost",
+  "run_id": "cef51ebd1edd4521b971a523a67f7368",
+  "checks": [
+    {
+      "name": "allowed_model_type",
+      "passed": true,
+      "observed": "xgboost",
+      "expected": [
+        "lightgbm",
+        "xgboost"
+      ]
+    },
+    {
+      "name": "holdout_mae",
+      "passed": true,
+      "observed": 6.650680278506111,
+      "expected": {
+        "lte": 8.0
+      }
+    },
+    {
+      "name": "holdout_mase",
+      "passed": true,
+      "observed": 0.38777389794225064,
+      "expected": {
+        "lte": 1.0
+      }
+    },
+    {
+      "name": "cv_mae_std",
+      "passed": true,
+      "observed": 0.24287834005133255,
+      "expected": {
+        "lte": 1.0
+      }
+    },
+    {
+      "name": "holdout_improvement_vs_best_baseline_pct",
+      "passed": true,
+      "observed": 0.47820981283063246,
+      "expected": {
+        "gte": 0.1
+      }
+    },
+    {
+      "name": "baseline_count",
+      "passed": true,
+      "observed": 3,
+      "expected": {
+        "gte": 3
+      }
+    },
+    {
+      "name": "promotion_approved",
+      "passed": true,
+      "observed": true,
+      "expected": true
+    },
+    {
+      "name": "promotion_gates",
+      "passed": true,
+      "observed": {
+        "beats_best_baseline": true,
+        "holdout_mase_lt_threshold": true,
+        "beats_current_champion": true
+      },
+      "expected": "all true"
+    }
+  ]
+}
