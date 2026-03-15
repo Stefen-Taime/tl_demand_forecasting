@@ -51,7 +51,8 @@
         - /etc/grafana/provisioning/datasources
         - /etc/grafana/provisioning/dashboards
         - /etc/grafana/provisioning/alerting
-        - /var/lib/grafana/dashboards
+        - /var/lib/grafana/dashboards/forecasting
+        - /var/lib/grafana/dashboards/operations
 
     - name: Deploy Grafana datasource config
       ansible.builtin.template:
@@ -62,16 +63,35 @@
 
     - name: Deploy dashboard provider config
       ansible.builtin.template:
-        src: "{{ playbook_dir }}/../templates/grafana-dashboard-provider.yml.j2"
-        dest: /etc/grafana/provisioning/dashboards/tlc-provider.yml
+        src: "{{ playbook_dir }}/../templates/grafana-dashboard-providers.yml.j2"
+        dest: /etc/grafana/provisioning/dashboards/tlc-providers.yml
         mode: "0644"
       notify: Restart Grafana
 
-    - name: Deploy Grafana dashboard JSON
+    - name: Remove legacy dashboard provider config
+      ansible.builtin.file:
+        path: /etc/grafana/provisioning/dashboards/tlc-provider.yml
+        state: absent
+      notify: Restart Grafana
+
+    - name: Deploy forecasting dashboard JSON
       ansible.builtin.template:
         src: "{{ playbook_dir }}/../templates/tlc-dashboard.json.j2"
-        dest: /var/lib/grafana/dashboards/tlc-demand-forecasting.json
+        dest: /var/lib/grafana/dashboards/forecasting/tlc-demand-forecasting.json
         mode: "0644"
+      notify: Restart Grafana
+
+    - name: Deploy operations dashboard JSON
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/tlc-operations-dashboard.json.j2"
+        dest: /var/lib/grafana/dashboards/operations/tlc-operations.json
+        mode: "0644"
+      notify: Restart Grafana
+
+    - name: Remove legacy dashboard JSON from old path
+      ansible.builtin.file:
+        path: /var/lib/grafana/dashboards/tlc-demand-forecasting.json
+        state: absent
       notify: Restart Grafana
 
     - name: Deploy Grafana alert rules

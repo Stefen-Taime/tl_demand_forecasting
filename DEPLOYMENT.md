@@ -209,6 +209,7 @@ echo "http://$EC2_IP:3000"
 Le dashboard provisionne est:
 
 - `TLC Demand Forecasting`
+- `TLC Operations`
 
 Alertes provisionnees:
 

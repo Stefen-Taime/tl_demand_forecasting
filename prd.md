@@ -1,878 +1,870 @@
-# PRD v2 - TLC Demand Forecasting MLOps
-**Projet**: TLC Demand Forecasting MLOps  
-**Version**: v2.0  
-**Date**: 14 mars 2026  
-**Statut**: version recommandee pour une implementation reelle
+# PRD v3 - TLC Demand Forecasting MLOps
+
+**Projet**: TLC Demand Forecasting MLOps
+**Version**: v3.0
+**Date**: 15 mars 2026
+**Statut**: aligne sur l'implementation reelle du repository
 
 ---
 
-## 1. Decision de conception
+## 0. Resume executif
 
-La version precedente etait ambitieuse, mais pas assez robuste sur trois points:
+Ce projet construit une chaine MLOps complete pour prevoir la demande TLC par `zone x heure`, evaluer plusieurs modeles, promouvoir un `champion`, puis exposer les predictions et les erreurs dans Grafana.
 
-1. Elle dependait de Databricks Community Edition alors que Databricks est en train de basculer vers Free Edition, avec des limitations serverless et reseau qui rendent le chemin "Databricks Free -> MLflow prive sur EC2" fragile.
-2. Elle exposait MLflow sur internet, alors que la doc MLflow recommande de ne pas exposer le serveur integre en direct.
-3. Elle calculait un MAE avec des `actuals` simulees, ce qui ne tient pas en entretien si on te demande d'ou viennent les vraies observations.
+Le systeme n'essaie pas de simuler un vrai temps reel TLC, car la source publique ne le permet pas. A la place, il utilise un `replay historique`:
 
-### Decision retenue
+- un holdout final est reserve apres le training
+- un service sur EC2 rejoue ce holdout heure par heure
+- le modele `champion` produit les predictions
+- les vraies observations du holdout servent d'`actuals`
+- Grafana affiche predictions, erreurs et tendances
 
-La base du projet passe a **2 environnements seulement**:
+Le projet est "prod-like" car il contient:
 
-- **ta machine locale**: Terraform, Ansible, ingestion, feature engineering, training, validation
-- **AWS**: une EC2 pour MLflow + PostgreSQL + Grafana + timer de prediction, et un bucket S3 pour les donnees et les artifacts
-
-Databricks Free Edition reste **optionnel**, uniquement pour exploration ou notebook demo. Il n'est plus dans le chemin critique.
+- une infra AWS versionnee
+- une separation `staging` / `production`
+- du CI/CD GitHub
+- des quality gates
+- un vrai protocole de validation temporelle
+- une promotion modele sous conditions
+- des alertes d'exploitation
 
 ---
 
-## 2. Objectif du projet
+## 1. Probleme et objectif
 
-Construire un projet MLOps portfolio qui montre:
+### Probleme
 
-- une infra reproductible avec Terraform + Ansible
-- un pipeline de prevision de la demande taxi par `zone x heure`
-- un suivi d'experiences et un Model Registry avec MLflow
-- un dashboard Grafana qui affiche predictions, actuals et erreur
-- un mode "pseudo-live" defensable: les donnees avancees dans le temps sont rejouees depuis un jeu historique, et les `actuals` viennent du truth set, pas d'une simulation aleatoire
+Le projet doit montrer comment transformer des donnees de trajets taxis brutes en un systeme MLOps lisible et defendable.
+
+Sans cadre MLOps, on obtient souvent:
+
+- des notebooks impossibles a rejouer
+- des metriques fragiles
+- des modeles sans gouvernance
+- aucun lien entre le training et l'observabilite
+
+### Objectif
+
+Construire un systeme qui couvre tout le cycle:
+
+1. ingerer les donnees TLC brutes
+2. produire un dataset `zone x heure`
+3. entrainer plusieurs candidats
+4. les comparer a des baselines
+5. promouvoir un `champion` si et seulement si les garde-fous passent
+6. faire tourner un replay historique
+7. afficher le resultat dans Grafana
+
+### Resultat attendu
+
+A la fin, un observateur doit pouvoir comprendre:
+
+- d'ou viennent les donnees
+- comment les features sont construites
+- quels modeles ont ete compares
+- pourquoi le champion a ete promu
+- comment le dashboard est alimente
+- comment l'infra est deployee et securisee
+
+---
+
+## 2. Scope et non-goals
+
+### In scope
+
+- provisionnement AWS avec Terraform
+- configuration EC2 avec Ansible
+- stockage S3
+- tracking et registry avec MLflow
+- predictions et monitoring dans PostgreSQL + Grafana
+- CI GitHub Actions
+- CD `staging` et `production`
+- validation temporelle et holdout final
+- quality gates et alertes
 
 ### Hors scope
 
-- serving temps reel a faible latence
-- autoscaling complexe
+- vrai streaming TLC temps reel
+- serving HTTP de predictions a faible latence
 - Kubernetes
-- Databricks Free comme dependance obligatoire
-- vraies observations temps reel TLC, qui ne sont pas publiees heure par heure en public
+- feature store dedie
+- online learning
+- orchestration type Airflow ou Dagster
+- experimentation distribuee a grande echelle
+
+### Role de Databricks
+
+Databricks n'est pas une dependance critique.
+
+Il reste optionnel pour:
+
+- EDA
+- demonstration notebook
+- prototypage rapide
+
+Le chemin de production ne depend pas de Databricks.
 
 ---
 
-## 3. Architecture cible
+## 3. Utilisateurs et cas d'usage
+
+### Utilisateur principal
+
+Un recruteur technique, un hiring manager ou une equipe data/ML qui veut evaluer la maturite du projet.
+
+### Cas d'usage principaux
+
+1. Lire le pipeline de bout en bout
+2. Rejouer l'entrainement
+3. Voir un modele promu selon des criteres explicites
+4. Ouvrir Grafana et comprendre les erreurs
+5. Deployer l'infra en `staging` puis `production`
+
+---
+
+## 4. Architecture cible
+
+### 4.1 Vue systeme
 
 ```text
-┌──────────────────────────────────────────────────────────────┐
-│                      TA MACHINE LOCALE                       │
-│                                                              │
-│  terraform apply      -> cree EC2 + S3 + IAM + EIP          │
-│  ansible-playbook     -> configure EC2                      │
-│  scripts/train.py     -> entraine les modeles               │
-│  ssh -L 5000:...      -> tunnel prive vers MLflow           │
-│                                                              │
-│  Pas de service 24/7 local                                  │
-└────────────────────────────┬─────────────────────────────────┘
-                             │ SSH + HTTPS
-┌────────────────────────────▼─────────────────────────────────┐
-│                        AWS EC2 t3.small                      │
-│                                                              │
-│  PostgreSQL                                                  │
-│  ├── mlflow             -> metadata MLflow + registry        │
-│  ├── predictions        -> prediction_hour, actuals, MAE     │
-│  └── replay_state       -> curseur de demo                   │
-│                                                              │
-│  MLflow Tracking Server                                      │
-│  ├── bind 127.0.0.1:5000                                     │
-│  ├── backend store -> PostgreSQL                             │
-│  └── artifact proxy -> S3                                    │
-│                                                              │
-│  Grafana                                                     │
-│  ├── bind 0.0.0.0:3000                                       │
-│  └── lit PostgreSQL                                          │
-│                                                              │
-│  systemd timer                                               │
-│  └── run_replay_cycle.py -> prediction + reconciliation      │
-└────────────────────────────┬─────────────────────────────────┘
-                             │ IAM role EC2
-┌────────────────────────────▼─────────────────────────────────┐
-│                           AWS S3                             │
-│                                                              │
-│  raw/                  -> donnees TLC sources               │
-│  features/             -> datasets agreges zone x heure     │
-│  holdout/              -> truth set pour replay demo        │
-│  mlflow-artifacts/     -> modèles, plots, artifacts         │
-│  reports/              -> drift / evaluation reports        │
-└──────────────────────────────────────────────────────────────┘
+                               +-----------------------+
+                               |      GitHub           |
+                               |  source + Actions     |
+                               +-----------+-----------+
+                                           |
+                                           | OIDC + CI/CD
+                                           v
+ +----------------------+        +-----------------------------+
+ | Machine locale       |        | AWS environment            |
+ |                      |        | staging ou production      |
+ | - terraform          |        |                             |
+ | - ansible            |        | +-------------------------+ |
+ | - ingest_tlc.py      |        | | EC2 m6i.large           | |
+ | - build_features.py  |  SSH   | |                         | |
+ | - train_models.py    +------->| | PostgreSQL              | |
+ | - evaluate_models.py |        | | MLflow localhost:5000   | |
+ | - promote_champion.py|        | | Grafana :3000           | |
+ |                      |        | | replay systemd timer    | |
+ +----------+-----------+        | +------------+------------+ |
+            |                    |              |              |
+            | boto3 / S3         |              | localhost    |
+            v                    |              v              |
+ +----------------------+        |      +------------------+   |
+ | S3                   |<-------+      | PostgreSQL       |   |
+ | - raw/               |               | - mlflow db      |   |
+ | - features/          |               | - predictions db |   |
+ | - holdout/           |               +------------------+   |
+ | - mlflow-artifacts/  |                                          |
+ | - reports/           |                                          |
+ +----------------------+                                          |
+                                                                   |
+                         Grafana <----------------------------------+
+                         lit zone_predictions et expose la vue metier
 ```
 
-### Pourquoi cette architecture est meilleure
-
-- Elle est deployable sans dependre des limites reseau de Databricks Free.
-- Elle garde MLflow prive.
-- Elle reste montrable en entretien.
-- Elle evite de pretendre a du "live" quand la source TLC est batch.
-
----
-
-## 4. Mode de demonstration
-
-Le dashboard n'est pas un "live feed" TLC. Il fonctionne en **replay historique**.
-
-### Regle produit
-
-Toutes les heures, un timer fait avancer un curseur temporel:
-
-1. charge l'heure `t` dans le jeu holdout
-2. construit les features a partir de l'historique disponible avant `t`
-3. charge le modele `champion`
-4. ecrit les predictions pour `t`
-5. recupere les vraies `actuals` de `t` depuis le holdout
-6. calcule l'erreur et met a jour PostgreSQL
-
-Ainsi:
-
-- le dashboard bouge automatiquement
-- le MAE est reel sur donnees historiques
-- on ne ment pas sur l'origine des observations
-
-### Positionnement entretien
-
-La bonne formulation est:
-
-> "Le dashboard est pseudo-live: il rejoue heure par heure une periode historique holdout. Les predictions sont produites par le modele champion, puis comparees aux observations reelles de cette meme heure."
-
----
-
-## 5. Repartition des phases
-
-| Phase | Environnement | Notes |
-|---|---|---|
-| 1. Provision infra | Local -> AWS | Terraform |
-| 2. Configuration serveur | Local -> EC2 | Ansible |
-| 3. Ingestion donnees TLC | Local | telechargement + upload S3 |
-| 4. Feature engineering | Local | DuckDB / Polars / Pandas par lots |
-| 5. Training et comparaison | Local + tunnel MLflow | MLflow sur EC2 |
-| 6. Promotion champion | Local -> MLflow Registry | alias `champion` |
-| 7. Replay monitoring | EC2 | timer systemd |
-| 8. Dashboard | EC2 Grafana | lecture PostgreSQL |
-
-### Remarque sur Databricks
-
-Databricks Free Edition peut etre garde en **appendice optionnel** pour:
-
-- exploration rapide
-- notebook de demo
-- visualisation ad hoc
-
-Il n'est **pas** requis pour:
-
-- l'entrainement principal
-- le logging MLflow
-- le dashboard
-- l'execution recurrente
-
----
-
-## 6. Structure de projet recommandee
+### 4.2 Vue data lineage
 
 ```text
-tlc-mlops/
-|
-├── terraform/
-│   ├── main.tf
-│   ├── variables.tf
-│   ├── outputs.tf
-│   ├── versions.tf
-│   ├── inventory.tftpl
-│   └── terraform.tfvars.example
-|
-├── ansible/
-│   ├── inventory.ini
-│   ├── collections/
-│   │   └── requirements.yml
-│   ├── group_vars/
-│   │   └── all.yml
-│   ├── playbooks/
-│   │   ├── site.yml
-│   │   ├── postgresql.yml
-│   │   ├── mlflow.yml
-│   │   ├── grafana.yml
-│   │   └── prediction_timer.yml
-│   └── templates/
-│       ├── mlflow.service.j2
-│       ├── grafana-datasource.yml.j2
-│       ├── tlc-replay.service.j2
-│       └── tlc-replay.timer.j2
-|
-├── data/
-│   ├── raw/
-│   ├── processed/
-│   └── holdout/
-|
-├── notebooks/
-│   └── exploration.ipynb
-|
-├── scripts/
-│   ├── ingest_tlc.py
-│   ├── build_features.py
-│   ├── train_models.py
-│   ├── evaluate_models.py
-│   └── promote_champion.py
-|
-├── prediction_service/
-│   ├── run_replay_cycle.py
-│   ├── feature_builder.py
-│   └── sql/
-│       └── schema.sql
-|
-├── requirements/
-│   ├── local.txt
-│   └── ec2.txt
-|
-└── README.md
+Fichiers TLC bruts
+    |
+    +--> scripts/ingest_tlc.py
+    |
+    +--> data/raw/*.parquet
+    +--> data/raw/taxi_zone_lookup.csv
+    +--> data/raw/taxi_zone_centroids.csv
+            |
+            v
+ scripts/build_features.py
+    |
+    +--> data/processed/features.parquet
+    +--> data/processed/train_features.parquet
+    +--> data/holdout/holdout_features.parquet
+            |
+            v
+ scripts/train_models.py
+    |
+    +--> MLflow runs
+    +--> MLflow artifacts
+            |
+            v
+ scripts/evaluate_models.py
+    |
+    +--> reports/run_summary.csv
+    +--> reports/best_run.json
+            |
+            v
+ scripts/promote_champion.py
+    |
+    +--> MLflow Registry alias champion
+    +--> reports/promotion_decision.json
+            |
+            v
+ prediction_service/run_replay_cycle.py
+    |
+    +--> PostgreSQL.zone_predictions
+    +--> PostgreSQL.replay_state
+            |
+            v
+ Grafana dashboard + alert rules
 ```
+
+### 4.3 Pourquoi cette architecture
+
+Cette architecture a ete retenue car elle:
+
+- isole le training et l'exploitation
+- garde MLflow prive
+- versionne l'infra
+- permet un `staging` et un `production` realistes
+- evite de raconter une fausse histoire de streaming
 
 ---
 
-## 7. Infrastructure AWS
+## 5. Composants et responsabilites
 
-### Ressources creees
+| Composant | Fichiers | Ce qu'il fait | Pourquoi il existe |
+| --- | --- | --- | --- |
+| Terraform | [`terraform/main.tf`](/Users/stefen/tl_demand_forecasting/terraform/main.tf) | cree EC2, EIP, S3, IAM, SG, OIDC | rendre l'infra reproductible |
+| Ansible base | [`site.yml`](/Users/stefen/tl_demand_forecasting/ansible/playbooks/site.yml) | installe le socle Ubuntu | eviter toute config manuelle |
+| Ansible PostgreSQL | [`postgresql.yml`](/Users/stefen/tl_demand_forecasting/ansible/playbooks/postgresql.yml) | cree db/users/schema | servir de backend MLflow et de db predictions |
+| Ansible MLflow | [`mlflow.yml`](/Users/stefen/tl_demand_forecasting/ansible/playbooks/mlflow.yml) | installe MLflow et le service systemd | suivre et registrer les modeles |
+| Ansible Grafana | [`grafana.yml`](/Users/stefen/tl_demand_forecasting/ansible/playbooks/grafana.yml) | installe Grafana, datasource, dashboard, alertes | donner une lecture metier |
+| Ansible replay | [`prediction_timer.yml`](/Users/stefen/tl_demand_forecasting/ansible/playbooks/prediction_timer.yml) | deploie le service replay + timer | simuler un flux de production |
+| Ingestion | [`ingest_tlc.py`](/Users/stefen/tl_demand_forecasting/scripts/ingest_tlc.py) | telecharge les parquets TLC | figer la source brute |
+| Geographie | [`build_zone_centroids.py`](/Users/stefen/tl_demand_forecasting/scripts/build_zone_centroids.py) | calcule les centroides de zones | alimenter le Geomap |
+| Feature engineering | [`build_features.py`](/Users/stefen/tl_demand_forecasting/scripts/build_features.py) | construit le dataset modele | transformer la donnee brute en probleme supervise |
+| Training | [`train_models.py`](/Users/stefen/tl_demand_forecasting/scripts/train_models.py) | entraine baselines et challengers | comparer proprement les candidats |
+| Evaluation | [`evaluate_models.py`](/Users/stefen/tl_demand_forecasting/scripts/evaluate_models.py) | exporte des rapports lisibles | piloter quality gates et review |
+| Promotion | [`promote_champion.py`](/Users/stefen/tl_demand_forecasting/scripts/promote_champion.py) | met a jour `candidate` / `champion` | gouverner la release modele |
+| Quality gates | [`check_quality.py`](/Users/stefen/tl_demand_forecasting/scripts/check_quality.py) | impose des seuils versionnes | eviter les regressions silencieuses |
+| Replay service | [`run_replay_cycle.py`](/Users/stefen/tl_demand_forecasting/prediction_service/run_replay_cycle.py) | genere predictions + actuals | fermer la boucle monitoring |
 
-- 1 EC2 `t3.small`
+---
+
+## 6. Contrat de donnees
+
+### 6.1 Source brute
+
+Source principale:
+
+- fichiers TLC mensuels `yellow_tripdata_YYYY-MM.parquet`
+
+Sources annexes:
+
+- `taxi_zone_lookup.csv`
+- shapefile `taxi_zones.zip`
+
+### 6.2 Grain d'analyse
+
+Le grain du projet est:
+
+- `zone_id`
+- `target_hour`
+
+La cible est:
+
+- `target_trips`
+
+### 6.3 Colonnes metadata
+
+Le dataset modele contient notamment:
+
+- `target_hour`
+- `zone_id`
+- `zone_name`
+- `borough`
+- `latitude`
+- `longitude`
+- `target_trips`
+
+### 6.4 Features
+
+Features calendaires:
+
+- `hour_of_day`
+- `day_of_week`
+- `day_of_month`
+- `month`
+- `is_weekend`
+- `hour_sin`
+- `hour_cos`
+- `dow_sin`
+- `dow_cos`
+
+Features d'historique:
+
+- `lag_1h`
+- `lag_2h`
+- `lag_24h`
+- `lag_168h`
+
+Features de tendance:
+
+- `rolling_mean_6h`
+- `rolling_mean_24h`
+- `rolling_std_24h`
+- `trend_ratio`
+
+### 6.5 Regles de qualite data
+
+Le pipeline applique deja plusieurs garde-fous:
+
+- rejet des datasets vides
+- rejet des `target_hour` nuls
+- rejet des targets negatives
+- rejet des doublons `zone x heure`
+- verification d'absence de fuite entre train et holdout
+- filtrage des timestamps hors plage deduite des fichiers sources
+
+---
+
+## 7. Conception ML
+
+### 7.1 Pourquoi un probleme tabulaire
+
+Le projet traite un forecasting agrege et non une sequence multiserie deep learning.
+
+Raisons:
+
+- la granularite `zone x heure` se prete bien aux arbres de gradient boosting
+- le cout d'exploitation reste faible
+- la lecture du modele est plus simple pour un projet portfolio
+
+### 7.2 Baselines obligatoires
+
+Baselines implementees:
+
+- `seasonal_naive_24h`
+- `seasonal_naive_168h`
+- `rolling_mean_24h`
+
+Raison:
+
+- une baseline indique si la complexite d'un modele est justifiee
+- `lag_24h` et `lag_168h` sont des references naturelles sur une serie horaire
+
+### 7.3 Modeles challengers
+
+Modeles actuellement supportes:
+
+- LightGBM
+- XGBoost
+
+Hyperparametres actuels:
+
+`LightGBM`
+
+- `n_estimators=500`
+- `learning_rate=0.05`
+- `num_leaves=63`
+- `subsample=0.8`
+- `colsample_bytree=0.8`
+- `random_state=42`
+
+`XGBoost`
+
+- `n_estimators=400`
+- `learning_rate=0.05`
+- `max_depth=8`
+- `subsample=0.8`
+- `colsample_bytree=0.8`
+- `objective=reg:squarederror`
+- `random_state=42`
+
+Raisons du choix:
+
+- tres performants sur tabulaire
+- robustes avec des features heterogenes
+- faciles a logger et a recharger dans MLflow
+
+### 7.4 Strategie de validation
+
+Le projet utilise un protocole a deux etages:
+
+1. `expanding-window CV` sur le train
+2. `holdout` final gele sur 7 jours
+
+Raison:
+
+- le CV mesure la stabilite et la generalisation temporelle
+- le holdout final sert de verite terrain pour la promotion
+
+### 7.5 Metriques
+
+Metriques suivies:
+
+- `MAE`
+- `RMSE`
+- `MASE`
+
+Raison:
+
+- `MAE` parle bien metier
+- `RMSE` sanctionne davantage les grosses erreurs
+- `MASE` permet de se comparer a une reference naive
+
+### 7.6 Quality gates
+
+Les quality gates versionnees imposent:
+
+- modeles autorises: `lightgbm`, `xgboost`
+- `holdout_mae <= 8.0`
+- `holdout_mase <= 1.0`
+- `cv_mae_std <= 1.0`
+- amelioration holdout vs meilleure baseline `>= 10%`
+- au moins 3 baselines
+- promotion approuvee
+- toutes les gates de promotion a `true`
+
+### 7.7 Etat actuel du modele
+
+Snapshot courant des rapports:
+
+- champion: `xgboost`
+- `holdout_mae = 6.6507`
+- `holdout_rmse = 14.9722`
+- `holdout_mase = 0.3878`
+- gain vs meilleure baseline: `+47.82%`
+- version registry approuvee: `3`
+
+Interpretation:
+
+- le systeme bat nettement les baselines
+- la performance est suffisante selon les gates en place
+- le champion a aussi battu l'ancien champion sur holdout
+
+---
+
+## 8. Promotion et gouvernance modele
+
+### 8.1 Regles de promotion
+
+Un challenger ne devient `champion` que si:
+
+- il bat la meilleure baseline
+- il a `holdout_mase < 1`
+- il ne regresse pas face au `champion` courant
+
+### 8.2 Etats MLflow utilises
+
+MLflow Registry utilise deux aliases:
+
+- `candidate`
+- `champion`
+
+Le flux est:
+
+1. enregistrer le challenger
+2. lui donner l'alias `candidate`
+3. n'affecter `champion` que si toutes les gates passent
+
+### 8.3 Artefacts de decision
+
+Les artefacts exportes sont:
+
+- [`reports/run_summary.csv`](/Users/stefen/tl_demand_forecasting/reports/run_summary.csv)
+- [`reports/best_run.json`](/Users/stefen/tl_demand_forecasting/reports/best_run.json)
+- [`reports/promotion_decision.json`](/Users/stefen/tl_demand_forecasting/reports/promotion_decision.json)
+- [`reports/quality_gate_report.json`](/Users/stefen/tl_demand_forecasting/reports/quality_gate_report.json)
+
+Ces fichiers forment la trace de decision versionnee.
+
+---
+
+## 9. Conception du replay pseudo-live
+
+### 9.1 Pourquoi le replay existe
+
+La source publique TLC est batch. Il serait trompeur de parler de "temps reel".
+
+Le replay permet de dire quelque chose de vrai:
+
+> le systeme rejoue heure par heure une periode holdout historique, predit avec le modele champion, puis compare aux observations reelles de cette meme heure.
+
+### 9.2 Mecanisme
+
+Le service:
+
+- charge le holdout
+- lit l'heure courante dans `replay_state`
+- isole toutes les lignes de cette heure
+- predit avec `models:/...@champion`
+- calcule `absolute_error`
+- ecrit le resultat dans `zone_predictions`
+- passe a l'heure suivante
+
+### 9.3 Tables Postgres impliquees
+
+`zone_predictions`
+
+- stocke predictions, actuals, erreur, version modele, alias
+
+`replay_state`
+
+- stocke le curseur de progression du replay
+
+### 9.4 Modes d'execution
+
+Deux modes pratiques:
+
+- un cycle unique via le timer systemd
+- un backfill complet via `--until-wrap --prune-window`
+
+Raison du prune:
+
+- eviter d'afficher des donnees de replay qui ne correspondent plus a la fenetre holdout courante
+
+---
+
+## 10. Dashboard et observabilite
+
+### 10.1 Dashboard Grafana
+
+Les dashboards provisionnes automatiquement sont:
+
+- `TLC Demand Forecasting`
+- `TLC Operations`
+
+Le dashboard metier contient:
+
+- un `geomap`
+- une serie temporelle `predicted vs actual`
+- une table MAE
+- une stat MAE
+
+Le dashboard operations contient:
+
+- la fraicheur du replay
+- la taille du dernier batch
+- la `MAE 24h`
+- la couverture par heure rejouee
+- l'etat du curseur `replay_state`
+
+### 10.2 Particularite temporelle
+
+Les requetes du dashboard sont ancrees sur `MAX(target_hour)` disponible dans `zone_predictions`.
+
+Raison:
+
+- le replay porte sur une plage historique
+- si le dashboard etait ancre sur `NOW()`, il afficherait `No data`
+
+### 10.3 Alertes
+
+Alertes provisionnees:
+
+- `TLC Replay Freshness`
+- `TLC Replay Coverage`
+- `TLC Model MAE 24h`
+
+Seuils actuels:
+
+- fraicheur replay > 90 minutes
+- batch recent < 100 lignes
+- `MAE 24h > 12`
+
+---
+
+## 11. Infrastructure AWS
+
+### 11.1 Ressources creees
+
+Pour chaque environnement:
+
+- 1 EC2 Ubuntu 24.04 `m6i.large`
 - 1 Elastic IP
-- 1 bucket S3
-- 1 IAM role attachee a l'EC2 pour l'acces S3
+- 1 bucket S3 chiffre et versionne
+- 1 IAM role EC2
+- 1 instance profile
 - 1 security group
+- 1 role IAM OIDC GitHub optionnel
 
-### Regles reseau
+### 11.2 Regles reseau
 
-Ports exposes:
+Expose publiquement:
 
-- `22/tcp` depuis ton IP uniquement
-- `3000/tcp` depuis ton IP uniquement
+- `22/tcp` pour SSH depuis le CIDR admin
+- `3000/tcp` pour Grafana depuis le CIDR admin
 
-Ports non exposes publiquement:
+Non exposes publiquement:
 
 - `5000/tcp` MLflow
 - `5432/tcp` PostgreSQL
 
-### Regle de securite
+### 11.3 Stockage S3
 
-MLflow ne doit pas etre public.  
-L'acces se fait via **SSH tunnel**:
+Buckets / prefixes utilises:
 
-```bash
-ssh -N -L 5000:127.0.0.1:5000 ubuntu@EC2_IP
-```
+- `raw/`
+- `features/`
+- `holdout/`
+- `mlflow-artifacts/`
+- `reports/`
 
-Ensuite, depuis ta machine:
+### 11.4 Choix de sizing
 
-```bash
-export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
-```
-
-### Bucket S3
-
-Le nom du bucket doit etre **globalement unique**.
-
-Exemple:
-
-```hcl
-resource "random_id" "bucket_suffix" {
-  byte_length = 4
-}
-
-resource "aws_s3_bucket" "mlops" {
-  bucket = "${var.project_name}-${random_id.bucket_suffix.hex}"
-}
-```
-
-### Bonnes pratiques Terraform a appliquer
-
-- bloquer l'acces public S3
-- activer le chiffrement S3
-- activer IMDSv2 sur l'EC2
-- ne pas faire passer de secrets dans le state Terraform
-- ne pas mettre le mot de passe PostgreSQL dans `terraform.tfvars`
-
-### Variables Terraform
-
-```hcl
-variable "aws_region" {
-  type    = string
-  default = "us-east-1"
-}
-
-variable "project_name" {
-  type    = string
-  default = "tlc-mlops"
-}
-
-variable "instance_type" {
-  type    = string
-  default = "t3.small"
-}
-
-variable "allowed_cidr" {
-  description = "Ton IP publique en /32"
-  type        = string
-}
-
-variable "key_pair_name" {
-  type = string
-}
-```
-
-### Outputs Terraform utiles
-
-```hcl
-output "server_ip" {
-  value = aws_eip.mlops_server.public_ip
-}
-
-output "grafana_url" {
-  value = "http://${aws_eip.mlops_server.public_ip}:3000"
-}
-
-output "ssh_mlflow_tunnel" {
-  value = "ssh -N -L 5000:127.0.0.1:5000 ubuntu@${aws_eip.mlops_server.public_ip}"
-}
-
-output "ssh_command" {
-  value = "ssh ubuntu@${aws_eip.mlops_server.public_ip}"
-}
-```
-
----
-
-## 8. Configuration EC2 avec Ansible
-
-### Important
-
-Les modules PostgreSQL ne viennent pas de `ansible.builtin`.  
-Il faut installer la collection `community.postgresql`.
-
-### `ansible/collections/requirements.yml`
-
-```yaml
-collections:
-  - name: community.postgresql
-  - name: ansible.posix
-```
-
-Installation:
-
-```bash
-ansible-galaxy collection install -r collections/requirements.yml
-```
-
-### Variables Ansible
-
-Les secrets passent par variable d'environnement locale ou Ansible Vault, pas via Terraform.
-
-Exemple:
-
-```bash
-export MLFLOW_DB_PASSWORD='change-me'
-ansible-playbook -i inventory.ini playbooks/site.yml \
-  -e "mlflow_db_password=$MLFLOW_DB_PASSWORD"
-```
-
-### `group_vars/all.yml`
-
-```yaml
-project_name: tlc-mlops
-app_root: /opt/tlc-mlops
-venv_path: /opt/tlc-mlops/.venv
-mlflow_port: 5000
-grafana_port: 3000
-postgres_port: 5432
-
-ec2_python_packages:
-  - mlflow
-  - boto3
-  - psycopg2-binary
-  - pandas
-  - numpy
-  - scikit-learn
-  - lightgbm
-  - xgboost
-  - evidently
-```
-
-### Roles techniques de l'EC2
+Le sizing `m6i.large` a ete retenu car des tailles plus petites de type burstable devenaient lentes avec:
 
 - PostgreSQL
-- MLflow Tracking Server
+- MLflow
 - Grafana
-- replay timer
+- replay service
 
-### Choix de runtime
-
-Le serveur EC2 **ne fait pas d'entrainement**.  
-Il ne fait que:
-
-- servir MLflow
-- stocker metadata et predictions
-- lancer la boucle de replay
-
-### Contrainte modele en production
-
-Pour simplifier l'inference sur EC2:
-
-- **LightGBM** et **XGBoost** sont eligibles au label `champion`
-- **Prophet** reste un modele de benchmark / comparaison offline
-
-Ce choix reduit le risque de runtime casse cote inference.
+sur une seule machine.
 
 ---
 
-## 9. PostgreSQL
+## 12. Securite et secrets
 
-### Bases
+### 12.1 Principes
 
-- `mlflow`
-- `predictions`
+- aucun credential AWS long dans GitHub
+- MLflow reste en `127.0.0.1`
+- Grafana a un mot de passe admin gere par secret
+- les fichiers sensibles locaux sont ignores du versioning
 
-### Schema `predictions`
+### 12.2 Secrets critiques
 
-La table doit etre idempotente. On veut des `UPSERT`, pas des doublons.
+Secrets utilises:
 
-```sql
-CREATE TABLE IF NOT EXISTS zone_predictions (
-    id               BIGSERIAL PRIMARY KEY,
-    target_hour      TIMESTAMP NOT NULL,
-    generated_at     TIMESTAMP NOT NULL DEFAULT NOW(),
-    zone_id          INTEGER NOT NULL,
-    zone_name        VARCHAR(100) NOT NULL,
-    borough          VARCHAR(50),
-    latitude         DOUBLE PRECISION,
-    longitude        DOUBLE PRECISION,
-    predicted_trips  DOUBLE PRECISION NOT NULL,
-    actual_trips     DOUBLE PRECISION,
-    absolute_error   DOUBLE PRECISION,
-    model_name       VARCHAR(100) NOT NULL,
-    model_version    VARCHAR(50) NOT NULL,
-    model_alias      VARCHAR(50) NOT NULL DEFAULT 'champion',
-    replay_mode      BOOLEAN NOT NULL DEFAULT TRUE,
-    status           VARCHAR(20) NOT NULL DEFAULT 'predicted',
-    created_at       TIMESTAMP NOT NULL DEFAULT NOW(),
-    UNIQUE (target_hour, zone_id, model_alias)
-);
+- `EC2_SSH_PRIVATE_KEY`
+- `MLFLOW_DB_PASSWORD`
+- `GRAFANA_ADMIN_PASSWORD`
 
-CREATE INDEX IF NOT EXISTS idx_zone_predictions_hour
-  ON zone_predictions(target_hour DESC);
+### 12.3 Acces MLflow
 
-CREATE INDEX IF NOT EXISTS idx_zone_predictions_zone
-  ON zone_predictions(zone_id);
-
-CREATE TABLE IF NOT EXISTS replay_state (
-    id              SMALLINT PRIMARY KEY DEFAULT 1,
-    current_hour    TIMESTAMP NOT NULL,
-    updated_at      TIMESTAMP NOT NULL DEFAULT NOW()
-);
-```
-
-### Pourquoi cette table est meilleure
-
-- `target_hour` est plus clair que `prediction_time`
-- contrainte `UNIQUE` pour eviter les doublons du timer
-- `status` permet de distinguer `predicted` et `reconciled`
-- `replay_mode` explicite la nature demo
-
----
-
-## 10. MLflow
-
-### Mode de deploiement
-
-MLflow tourne sur l'EC2, mais **uniquement en local sur la machine distante**:
-
-```bash
-mlflow server \
-  --host 127.0.0.1 \
-  --port 5000 \
-  --backend-store-uri postgresql+psycopg2://mlflow:${MLFLOW_DB_PASSWORD}@localhost/mlflow \
-  --artifacts-destination s3://<bucket>/mlflow-artifacts
-```
-
-### Pourquoi `--artifacts-destination`
-
-On veut que **le serveur MLflow** accede a S3 et proxy les artifacts.  
-Les clients n'ont pas a ecrire directement dans S3.
-
-### Consequences
-
-- training local loggue par HTTP vers MLflow
-- le serveur EC2 stocke metadata en PostgreSQL
-- le serveur EC2 ecrit les artifacts en S3 via son IAM role
-
-### Service systemd
-
-Exemple de template:
-
-```ini
-[Unit]
-Description=MLflow Tracking Server
-After=network.target postgresql.service
-
-[Service]
-User=ubuntu
-WorkingDirectory=/opt/tlc-mlops
-EnvironmentFile=/etc/tlc-mlops/mlflow.env
-ExecStart={{ venv_path }}/bin/mlflow server \
-  --host 127.0.0.1 \
-  --port {{ mlflow_port }} \
-  --backend-store-uri ${BACKEND_STORE_URI} \
-  --artifacts-destination s3://{{ s3_bucket }}/mlflow-artifacts
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Contenu de `/etc/tlc-mlops/mlflow.env`:
-
-```bash
-BACKEND_STORE_URI=postgresql+psycopg2://mlflow:<mot_de_passe>@localhost/mlflow
-```
-
-### Workflow local
+MLflow est accessible via tunnel SSH:
 
 ```bash
 ssh -N -L 5000:127.0.0.1:5000 ubuntu@EC2_IP
 export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
-python scripts/train_models.py
 ```
+
+Raison:
+
+- pas d'exposition publique du serveur MLflow
+- surface d'attaque reduite
+
+### 12.4 GitHub OIDC
+
+GitHub Actions assume un role IAM AWS via OIDC.
+
+Raison:
+
+- supprimer les AWS access keys statiques dans GitHub
+- garder un chemin de deploiement plus propre
 
 ---
 
-## 11. Ingestion et feature engineering
+## 13. CI/CD et environnements
 
-### Source
+### 13.1 Environnements
 
-Jeu de donnees TLC public, stocke en local puis versionne dans S3.
+Deux environnements logiques:
 
-### Pipeline recommande
+- `staging`
+- `production`
 
-1. `scripts/ingest_tlc.py`
-2. `scripts/build_features.py`
-3. upload du dataset features vers `s3://bucket/features/...`
-4. split train / validation / holdout chronologique
+Chaque environnement a:
 
-### Outils recommandes
+- son `PROJECT_NAME`
+- son `TF_STATE_KEY`
+- ses secrets GitHub Environment
+- son infra separee
 
-- DuckDB pour agreger rapidement du parquet
-- Polars ou Pandas pour la preparation finale
+### 13.2 CI
 
-### Pourquoi local est suffisant
+Le workflow `CI` valide:
 
-Le volume est grand en brut, mais reste raisonnable en traitement par lots pour un portfolio, surtout si:
+- la compilation Python
+- les tests `pytest`
+- les quality gates
+- `terraform fmt` et `terraform validate`
+- la syntaxe des playbooks Ansible
 
-- tu agreges par mois
-- tu ecris en parquet
-- tu limites les colonnes
-- tu travailles ensuite sur `zone x heure`
+### 13.3 CD staging
 
-Si ta machine locale est trop juste, tu peux remplacer cette phase par un workspace Databricks **trial** ou **paye**, mais ce n'est pas la baseline du projet.
+Declenchement:
 
----
+- `push` vers `main`
 
-## 12. Training
+Role:
 
-### Modeles compares
+- deployer automatiquement la stack d'integration
 
-- LightGBM
-- XGBoost
-- Prophet
+### 13.4 CD production
 
-### Regle produit
+Declenchement:
 
-- `champion` ne peut pointer que vers LightGBM ou XGBoost
-- Prophet reste en benchmark
+- tag `prod-v*`
+- `workflow_dispatch` garde en break-glass
 
-### Strategie de validation
+Role:
 
-- split temporel strict
-- walk-forward validation
-- metriques: MAE, RMSE, MAPE si utile
+- deployer une release immutable de production
 
-### Workflow
+### 13.5 Logique de deploy
 
-1. charger les features
-2. lancer les trainings
-3. logger metrics et artifacts dans MLflow
-4. comparer les runs
-5. promouvoir le meilleur modele arbre en alias `champion`
+Le workflow reutilisable:
 
----
-
-## 13. Prediction service
-
-### Principe
-
-Le service `run_replay_cycle.py` remplace l'ancien `predict_hourly.py` qui simulait les features et les `actuals`.
-
-### Comportement attendu
-
-1. lire `replay_state.current_hour`
-2. construire les features pour cette heure a partir de l'historique avant `current_hour`
-3. charger `models:/tlc-demand-forecasting@champion`
-4. predire pour toutes les zones suivies
-5. lire les vraies `actuals` du holdout pour `current_hour`
-6. faire un `UPSERT` dans `zone_predictions`
-7. incrementer `replay_state.current_hour` d'une heure
-
-### Ce que le service ne doit plus faire
-
-- pas de `np.random.randint()` pour fabriquer des predictions
-- pas de `actual_trips` simulees
-- pas de duplication de lignes a chaque run
-
-### Choix de scheduler
-
-Utiliser **systemd timer**, pas cron.
-
-Pourquoi:
-
-- plus fiable
-- plus simple a deboguer avec `journalctl`
-- pas de probleme de shell `source`
-
-### Exemple de timer
-
-```ini
-[Unit]
-Description=Run TLC replay cycle hourly
-
-[Timer]
-OnCalendar=hourly
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-```
+1. assume le role AWS via OIDC
+2. lance Terraform
+3. recupere les outputs
+4. ouvre temporairement SSH pour l'IP du runner
+5. rend l'inventory Ansible
+6. applique les playbooks
+7. verifie les services
+8. referme la fenetre SSH
 
 ---
 
-## 14. Grafana
+## 14. Phases projet de bout en bout
 
-### Exposition
+### Phase A. Provisionner l'infra
 
-Grafana peut rester accessible sur `3000/tcp` depuis ton IP uniquement.
+Entree:
 
-### Provisioning
+- variables Terraform
 
-La datasource PostgreSQL doit etre provisionnee par fichier YAML, pas par appel HTTP API ad hoc.
+Sortie:
 
-### Exemple de datasource provisionnee
+- EC2
+- S3
+- IAM
+- SG
+- EIP
 
-```yaml
-apiVersion: 1
+### Phase B. Configurer la machine
 
-datasources:
-  - name: PostgreSQL-Predictions
-    type: postgres
-    access: proxy
-    url: localhost:5432
-    user: mlflow
-    jsonData:
-      database: predictions
-      sslmode: disable
-      postgresVersion: 1500
-      timescaledb: false
-    secureJsonData:
-      password: $MLFLOW_DB_PASSWORD
-```
+Entree:
 
-### Panels recommandes
+- EC2 fraiche
+- secrets applicatifs
 
-1. Geomap par `zone`
-2. Time series `predicted vs actual`
-3. Table MAE par zone
-4. Stat cards: MAE global, zones actives, version champion, nombre de predictions
+Sortie:
 
-### Requetes SQL conseillees
+- PostgreSQL pret
+- MLflow pret
+- Grafana pret
+- replay timer pret
 
-#### Geomap
+### Phase C. Ingerer et preparer les donnees
 
-```sql
-SELECT
-    zone_name AS name,
-    latitude,
-    longitude,
-    AVG(predicted_trips) AS predicted,
-    AVG(actual_trips) AS actual,
-    AVG(absolute_error) AS error,
-    borough
-FROM zone_predictions
-WHERE target_hour >= NOW() - INTERVAL '24 hours'
-GROUP BY zone_name, latitude, longitude, borough
-ORDER BY predicted DESC;
-```
+Entree:
 
-#### Time series
+- fichiers TLC publics
 
-```sql
-SELECT
-    target_hour AS time,
-    predicted_trips,
-    actual_trips
-FROM zone_predictions
-WHERE
-    zone_name = '$zone'
-    AND target_hour BETWEEN $__timeFrom() AND $__timeTo()
-ORDER BY target_hour;
-```
+Sortie:
 
-#### MAE par zone
+- `data/raw/*`
+- `data/processed/train_features.parquet`
+- `data/holdout/holdout_features.parquet`
 
-```sql
-SELECT
-    zone_name,
-    borough,
-    ROUND(AVG(predicted_trips)::numeric, 1) AS avg_predicted,
-    ROUND(AVG(actual_trips)::numeric, 1) AS avg_actual,
-    ROUND(AVG(absolute_error)::numeric, 1) AS mae,
-    COUNT(*) AS n_predictions,
-    MAX(model_version) AS model_version
-FROM zone_predictions
-WHERE target_hour >= NOW() - INTERVAL '7 days'
-GROUP BY zone_name, borough
-ORDER BY mae ASC;
-```
+### Phase D. Entrainer et evaluer
+
+Entree:
+
+- train
+- holdout
+
+Sortie:
+
+- runs MLflow
+- rapports d'evaluation
+
+### Phase E. Promouvoir
+
+Entree:
+
+- runs MLflow
+- champion courant
+
+Sortie:
+
+- alias `candidate`
+- alias `champion` eventuellement mis a jour
+
+### Phase F. Rejouer et observer
+
+Entree:
+
+- holdout
+- modele champion
+
+Sortie:
+
+- `zone_predictions`
+- dashboard Grafana
+- alertes exploitation
 
 ---
 
-## 15. Commandes d'execution
+## 15. Critere de succes
 
-### Terraform
+Le projet est considere reussi si:
 
-```bash
-cd terraform
-terraform init
-terraform plan -var-file=terraform.tfvars
-terraform apply -var-file=terraform.tfvars
-```
-
-### Inventory genere par Terraform
-
-L'inventory ne doit contenir que:
-
-- IP
-- utilisateur SSH
-- chemin de cle
-- nom du bucket
-
-Il ne doit pas contenir le mot de passe PostgreSQL.
-
-### Ansible
-
-```bash
-cd ansible
-ansible-galaxy collection install -r collections/requirements.yml
-
-export MLFLOW_DB_PASSWORD='change-me'
-ansible-playbook -i inventory.ini playbooks/site.yml \
-  -e "mlflow_db_password=$MLFLOW_DB_PASSWORD"
-```
-
-### Tunnel MLflow
-
-```bash
-ssh -N -L 5000:127.0.0.1:5000 ubuntu@EC2_IP
-```
-
-### Training local
-
-```bash
-export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
-python scripts/train_models.py
-python scripts/promote_champion.py
-```
-
-### Verification
-
-```bash
-curl http://EC2_IP:3000/api/health
-ssh ubuntu@EC2_IP 'systemctl status mlflow'
-ssh ubuntu@EC2_IP 'systemctl status grafana-server'
-ssh ubuntu@EC2_IP 'systemctl status tlc-replay.timer'
-```
-
-### Destruction
-
-```bash
-cd terraform
-terraform destroy -var-file=terraform.tfvars
-```
+1. l'infra peut etre recreee sans etapes manuelles cachees
+2. les donnees TLC peuvent etre re-ingerees
+3. le pipeline produit train + holdout valides
+4. au moins une baseline et deux challengers sont compares
+5. le champion est promu selon des gates explicites
+6. le replay alimente automatiquement PostgreSQL
+7. Grafana affiche predictions, actuals et erreur
+8. la CI et le CD passent sur `staging` et `production`
 
 ---
 
-## 16. Ajustements obligatoires par rapport a l'ancienne version
+## 16. Limites et risques assumes
 
-### A supprimer
+### Limites
 
-- dependance a Databricks Community Edition
-- ouverture publique du port MLflow `5000`
-- `predict_hourly.py` avec random features / random actuals
-- secrets injectes depuis Terraform dans `inventory.ini`
-- datasource Grafana creee via POST API `admin/admin`
-- cron qui utilise `source`
+- pas de vraie source online
+- pas d'orchestrateur de jobs externe
+- pas de serving HTTP temps reel
+- pas de rollback multi-version automatise au-dela des aliases MLflow
 
-### A garder
+### Risques
 
-- Terraform + Ansible
-- EC2 + S3 + PostgreSQL + Grafana + MLflow
-- dashboard par zone
-- registry `champion`
-- role de demonstration "pseudo-live"
+- la couverture geographique depend de la presence des centroides
+- une seule EC2 concentre plusieurs roles applicatifs
+- la qualite des predictions depend de la periode TLC choisie
 
-### A renommer
+### Positionnement honnete
 
-- `prediction_time` -> `target_hour`
-- `predict_hourly.py` -> `run_replay_cycle.py`
-- "live dashboard" -> "pseudo-live replay dashboard"
+Ce projet n'est pas une plateforme data entreprise complete.
+
+En revanche, c'est une implementation propre et defendable d'une chaine MLOps compacte, avec des decisions techniques explicites et une vraie observabilite metier.
 
 ---
 
-## 17. Appendice Databricks Free Edition
+## 17. Etat actuel du repository
 
-Databricks Free Edition peut rester un bonus si tu veux montrer un notebook cloud, mais sous ces regles:
+Le repository actuel implemente effectivement:
 
-1. pas dans le chemin critique
-2. pas de dependance obligatoire pour MLflow
-3. pas de dependance obligatoire pour l'acces S3
-4. pas de promesse d'execution recurrente 24/7
+- Terraform en `ca-central-1`
+- Ansible pour PostgreSQL, MLflow, Grafana et replay
+- quality gates versionnees
+- CI GitHub Actions
+- CD `staging` et `production`
+- OIDC GitHub vers AWS
+- rotation du mot de passe Grafana par secret
+- dashboard et alertes Grafana provisionnes
 
-### Usage acceptable
+Le modele champion documente au moment de cette version du PRD est:
 
-- EDA notebook
-- visualisation rapide
-- prototype de feature engineering
-
-### Usage a eviter dans ce projet
-
-- architecture "Databricks Free -> MLflow EC2 public"
-- architecture "Databricks Free -> S3 custom storage" comme prerequis central
-- architecture qui suppose un egress stable et controle alors que Free Edition reste serverless et limitee
+- `xgboost`
+- registry version `3`
+- approuve par les quality gates
 
 ---
 
-## 18. Verdict
+## 18. Appendice: role des notebooks Databricks
 
-La bonne version du projet est:
+Les notebooks dans [`databricks/`](/Users/stefen/tl_demand_forecasting/databricks) sont gardes pour:
 
-- **2 environnements en baseline**
-- **MLflow prive via tunnel SSH**
-- **Grafana public mais IP allowliste**
-- **replay historique avec vraies actuals**
-- **Databricks Free seulement en option**
+- EDA
+- prototypage
+- demo notebook
 
-Cette version est:
-
-- plus simple
-- plus credible
-- plus securisee
-- plus facile a mettre en place
-- plus solide en entretien
-
----
-
-## 19. Sources de reference
-
-- Databricks Free Edition: https://docs.databricks.com/aws/en/getting-started/free-edition
-- Databricks Free Edition limitations: https://docs.databricks.com/aws/en/getting-started/free-edition-limitations
-- CE migration: https://docs.databricks.com/aws/en/getting-started/ce-migration
-- Serverless limitations: https://docs.databricks.com/aws/en/compute/serverless/limitations
-- MLflow tracking server architecture: https://mlflow.org/docs/latest/self-hosting/architecture/tracking-server/
-- MLflow security: https://mlflow.org/docs/latest/self-hosting/security/network/
-- Ansible `community.postgresql`: https://docs.ansible.com/ansible/latest/collections/community/postgresql/
-- Grafana provisioning: https://grafana.com/docs/grafana/latest/administration/provisioning/
+Ils ne remplacent pas les scripts de reference du projet et ne doivent pas etre consideres comme la source de verite du pipeline.
